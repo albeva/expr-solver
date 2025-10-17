@@ -18,7 +18,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver = "0.1.0"
+expr-solver-lib = "0.1.0"
 ```
 
 ### Basic Example
