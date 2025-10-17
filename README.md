@@ -139,7 +139,7 @@ The assembly shows the stack-based bytecode instructions that will be executed b
 
 All calculations are performed using **128-bit `Decimal`** type from the `rust_decimal` crate, providing exact decimal arithmetic without floating-point errors.
 
-> **Note**: Some trigonometric and hyperbolic functions (`asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `cbrt`, `exp2`, `log2`, `hypot`) internally convert to/from `f64` for computation, which may introduce minor precision differences.
+> **Note**: Some trigonometric and hyperbolic functions (`asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `cbrt`, `exp2`, `log2`, `hypot`) internally convert to/from `f64` for computation, which may introduce minor precision differences. All constants (`pi`, `e`, `tau`, `ln2`, `ln10`, `sqrt2`) are computed using native `Decimal` operations for maximum precision.
 
 ## Built-in Functions
 
