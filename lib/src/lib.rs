@@ -68,34 +68,53 @@ enum EvalSource<'str> {
 #[derive(Debug)]
 pub struct Eval<'str> {
     source: EvalSource<'str>,
-    table: Option<SymTable>,
+    table: SymTable,
 }
 
 impl<'str> Eval<'str> {
+    /// Quick evaluation of an expression with default standard library
+    pub fn evaluate(expression: &'str str) -> Result<Decimal, String> {
+        Self::new(expression).run()
+    }
+
+    /// Create a new evaluator with an expression string
     pub fn new(string: &'str str) -> Self {
+        Self::with_table(string, SymTable::stdlib())
+    }
+
+    /// Create a new evaluator with an expression string and custom symbol table
+    pub fn with_table(string: &'str str, table: SymTable) -> Self {
         let source = Source::new(string);
         Self {
             source: EvalSource::Source(Cow::Owned(source)),
-            table: None,
+            table,
         }
     }
 
+    /// Create a new evaluator from a Source reference
     pub fn new_from_source(source: &'str Source<'str>) -> Self {
+        Self::from_source_with_table(source, SymTable::stdlib())
+    }
+
+    /// Create a new evaluator from a Source reference with custom symbol table
+    pub fn from_source_with_table(source: &'str Source<'str>, table: SymTable) -> Self {
         Self {
             source: EvalSource::Source(Cow::Borrowed(source)),
-            table: None,
+            table,
         }
     }
 
+    /// Create a new evaluator from a compiled binary file
     pub fn new_from_file(path: PathBuf) -> Self {
+        Self::from_file_with_table(path, SymTable::stdlib())
+    }
+
+    /// Create a new evaluator from a compiled binary file with custom symbol table
+    pub fn from_file_with_table(path: PathBuf, table: SymTable) -> Self {
         Self {
             source: EvalSource::File(path),
-            table: None,
+            table,
         }
-    }
-
-    pub fn with_table(&mut self, table: SymTable) {
-        self.table = Some(table);
     }
 
     pub fn run(&mut self) -> Result<Decimal, String> {
@@ -110,7 +129,7 @@ impl<'str> Eval<'str> {
     }
 
     pub fn build_program(&mut self) -> Result<Program<'_>, String> {
-        let table = self.table.get_or_insert_with(SymTable::stdlib);
+        let table = &self.table;
         match &self.source {
             EvalSource::Source(source) => {
                 let mut parser = Parser::new(source);

@@ -35,10 +35,17 @@ expr-solver-bin = "1.0.2"
 ### Basic Example
 
 ```rust
-use expr_solver::{Eval};
+use expr_solver::Eval;
 
 fn main() {
-    let mut eval = Eval::new("2+3*4");
+    // Quick one-liner evaluation
+    match Eval::evaluate("2+3*4") {
+        Ok(result) => println!("Result: {}", result),
+        Err(e) => eprintln!("Error: {}", e),
+    }
+
+    // Or create an evaluator instance for more control
+    let mut eval = Eval::new("sqrt(16) + pi");
     match eval.run() {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
@@ -46,7 +53,7 @@ fn main() {
 }
 ```
 
-This will evaluate the hardcoded expression `2 + 3 * 4` and print the result.
+This will evaluate mathematical expressions and print the results.
 
 ## Testing
 

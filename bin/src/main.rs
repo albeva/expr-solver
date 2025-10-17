@@ -66,14 +66,12 @@ fn run() -> Result<(), String> {
 
     // load either from string input or a file
     let mut eval = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        Eval::new(expr)
+        Eval::with_table(expr, table)
     } else if let Some(input) = &args.input {
-        Eval::new_from_file(input.clone())
+        Eval::from_file_with_table(input.clone(), table)
     } else {
         return Err("no input".to_string());
     };
-
-    eval.with_table(table);
 
     if args.assembly {
         let program = eval.build_program()?;
