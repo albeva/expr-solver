@@ -433,7 +433,9 @@ impl SymTable {
                             Ok(args[2])
                         }
                     },
-                    description: Some("Conditional expression: if(condition, true_value, false_value)".into()),
+                    description: Some(
+                        "Conditional expression: if(condition, true_value, false_value)".into(),
+                    ),
                 },
                 // Variadic functions
                 Symbol::Func {

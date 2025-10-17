@@ -3,8 +3,8 @@ use crate::symbol::{SymTable, Symbol};
 use bincode::config;
 use colored::Colorize;
 use rust_decimal::Decimal;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Current version of the program format
@@ -185,7 +185,9 @@ impl<'sym> Program<'sym> {
         use std::fmt::Write as _;
 
         let mut out = String::new();
-        out += &format!("; VERSION {}\n", self.version).bright_black().to_string();
+        out += &format!("; VERSION {}\n", self.version)
+            .bright_black()
+            .to_string();
 
         let emit = |mnemonic: &str| -> String { format!("{}", mnemonic.magenta()) };
         let emit1 = |mnemonic: &str, op: &str| -> String {

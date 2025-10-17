@@ -129,7 +129,6 @@ impl<'str> Eval<'str> {
     }
 
     pub fn build_program(&mut self) -> Result<Program<'_>, String> {
-        let table = &self.table;
         match &self.source {
             EvalSource::Source(source) => {
                 let mut parser = Parser::new(source);
@@ -140,14 +139,14 @@ impl<'str> Eval<'str> {
                     Some(ast) => ast,
                     None => return Ok(Program::default()),
                 };
-                Sema::new(table)
+                Sema::new(&self.table)
                     .visit(&mut ast)
                     .map_err(|err| FormattedError::from((&err, source.as_ref())).to_string())?;
                 IrBuilder::new().build(&ast).map_err(|err| err.to_string())
             }
             EvalSource::File(path) => {
                 let binary_data = fs::read(path).map_err(|err| err.to_string())?;
-                Program::load(&binary_data, table).map_err(|err| err.to_string())
+                Program::load(&binary_data, &self.table).map_err(|err| err.to_string())
             }
         }
     }
