@@ -1,6 +1,6 @@
 [package]
 name = "expr-solver-bin"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 authors = ["Albert Varaksin <albeva@me.com>"]
 description = "Binary using the expr-solver-lib to solve math expressions from command line"

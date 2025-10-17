@@ -18,7 +18,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-lib = "1.0.1"
+expr-solver-lib = "1.0.2"
 ```
 
 ### As a binary
@@ -27,7 +27,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-bin = "1.0.1"
+expr-solver-bin = "1.0.2"
 ```
 
 ### Basic Example
@@ -37,11 +37,10 @@ use expr_solver::{Eval};
 
 fn main() {
     let mut eval = Eval::new("2+3*4");
-    match eval.eval() {
+    match eval.run() {
         Ok(result) => println!("Result: {}", result),
         Err(e) => eprintln!("Error: {}", e),
     }
-    
 }
 ```
 
