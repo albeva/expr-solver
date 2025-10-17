@@ -33,17 +33,20 @@ pub enum Instr<'sym> {
     GreaterEqual,
 }
 
+/// Builder for converting AST expressions into bytecode programs.
 pub struct IrBuilder<'sym> {
     prog: Program<'sym>,
 }
 
 impl<'src, 'sym> IrBuilder<'sym> {
+    /// Creates a new IR builder.
     pub fn new() -> Self {
         Self {
             prog: Program::new(),
         }
     }
 
+    /// Builds a bytecode program from an AST expression.
     pub fn build(mut self, expr: &Expr<'src, 'sym>) -> Result<Program<'sym>, IrError> {
         self.emit(expr)?;
         Ok(self.prog)

@@ -74,8 +74,7 @@ fn run() -> Result<(), String> {
     };
 
     if args.assembly {
-        let program = eval.build_program()?;
-        print!("{}", program.get_assembly());
+        print!("{}", eval.get_assembly()?);
         return Ok(());
     }
 

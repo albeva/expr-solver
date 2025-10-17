@@ -2,22 +2,24 @@ use crate::span::Span;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
 
-/// Source code container with input validation.
+/// Source code container with input validation and error highlighting.
 #[derive(Debug, Clone)]
 pub struct Source<'str> {
     pub input: &'str str,
 }
 
 impl<'str> Source<'str> {
-    /// Create a new source from input string.
+    /// Creates a new source from an input string.
     ///
-    /// Validates input length and trims whitespace.
+    /// The input is trimmed of leading and trailing whitespace.
     pub fn new(input: &'str str) -> Self {
         let trimmed = input.trim();
         Self { input: trimmed }
     }
 
-    /// Return source string with a highlighted section
+    /// Returns a formatted string with syntax highlighting for the given span.
+    ///
+    /// The output includes a caret and squiggly line pointing to the error location.
     pub fn highlight(&self, span: &Span) -> String {
         let input = &self.input;
         let pre = Self::escape(&input[..span.start]);

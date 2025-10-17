@@ -26,6 +26,9 @@ impl SpanError for ParseError {
 
 pub type ParseResult<'src, 'sym> = Result<Expr<'src, 'sym>, ParseError>;
 
+/// Recursive descent parser for mathematical expressions.
+///
+/// Uses operator precedence climbing for efficient binary operator parsing.
 pub struct Parser<'src> {
     lexer: Lexer<'src>,
     lookahead: Token<'src>,
@@ -33,6 +36,7 @@ pub struct Parser<'src> {
 }
 
 impl<'src, 'sym> Parser<'src> {
+    /// Creates a new parser from a source.
     pub fn new(source: &'src Source) -> Self {
         let mut lexer = Lexer::new(source);
         let lookahead = lexer.next();
@@ -44,6 +48,9 @@ impl<'src, 'sym> Parser<'src> {
         }
     }
 
+    /// Parses the source into an abstract syntax tree.
+    ///
+    /// Returns `None` for empty input, or an expression AST on success.
     pub fn parse(&mut self) -> Result<Option<Expr<'src, 'sym>>, ParseError> {
         if self.lookahead == Token::EOF {
             return Ok(None);

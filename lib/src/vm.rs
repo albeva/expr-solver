@@ -38,12 +38,23 @@ pub enum VmError {
     FunctionError(FuncError),
 }
 
-/// A simple stack-based virtual machine for evaluating programs.
+/// Stack-based virtual machine for executing bytecode programs.
+///
+/// The VM evaluates programs by executing bytecode instructions on a stack,
+/// performing arithmetic operations and function calls.
 #[derive(Debug, Default)]
 pub struct Vm;
 
 impl Vm {
-    /// Executes the given program and returns the result or a VmError.
+    /// Executes a program and returns the result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VmError`] if execution fails due to:
+    /// - Stack underflow
+    /// - Division by zero
+    /// - Invalid operations (e.g., factorial of non-integer)
+    /// - Function errors
     pub fn run(&self, prog: &Program) -> Result<Decimal, VmError> {
         if prog.code.is_empty() {
             return Ok(Decimal::ZERO);

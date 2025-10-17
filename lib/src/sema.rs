@@ -40,17 +40,22 @@ impl SpanError for SemaError {
     }
 }
 
-/// Semantic analyzer: resolves identifiers/calls to symbols and checks arity & types.
+/// Semantic analyzer for type checking and symbol resolution.
+///
+/// Validates that identifiers reference valid symbols and that function
+/// calls have the correct number of arguments.
 #[derive(Debug)]
 pub struct Sema<'sym> {
     table: &'sym SymTable,
 }
 
 impl<'src, 'sym> Sema<'sym> {
+    /// Creates a new semantic analyzer with the given symbol table.
     pub fn new(table: &'sym SymTable) -> Self {
         Self { table }
     }
 
+    /// Analyzes an AST expression, resolving symbols and checking types.
     pub fn visit(&mut self, ast: &mut Expr<'src, 'sym>) -> Result<(), SemaError> {
         match &mut ast.kind {
             ExprKind::Literal(_) => Ok(()),

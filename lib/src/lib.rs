@@ -65,6 +65,24 @@ enum EvalSource<'str> {
     File(PathBuf),
 }
 
+/// Expression evaluator with support for custom symbols and bytecode compilation.
+///
+/// `Eval` is the main entry point for evaluating mathematical expressions. It supports
+/// both quick one-off evaluations and reusable evaluators with custom symbol tables.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::Eval;
+///
+/// // Quick evaluation
+/// let result = Eval::evaluate("2 + 3 * 4").unwrap();
+/// assert_eq!(result.to_string(), "14");
+///
+/// // Reusable evaluator
+/// let mut eval = Eval::new("sqrt(16) + pi");
+/// let result = eval.run().unwrap();
+/// ```
 #[derive(Debug)]
 pub struct Eval<'str> {
     source: EvalSource<'str>,
@@ -72,17 +90,69 @@ pub struct Eval<'str> {
 }
 
 impl<'str> Eval<'str> {
-    /// Quick evaluation of an expression with default standard library
+    /// Quick evaluation of an expression with the standard library.
+    ///
+    /// This is a convenience method for one-off evaluations.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Eval;
+    ///
+    /// let result = Eval::evaluate("2^8").unwrap();
+    /// assert_eq!(result.to_string(), "256");
+    /// ```
     pub fn evaluate(expression: &'str str) -> Result<Decimal, String> {
         Self::new(expression).run()
     }
 
-    /// Create a new evaluator with an expression string
+    /// Quick evaluation of an expression with a custom symbol table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::{Eval, SymTable};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let mut table = SymTable::stdlib();
+    /// table.add_const("x", dec!(42)).unwrap();
+    ///
+    /// let result = Eval::evaluate_with_table("x * 2", table).unwrap();
+    /// assert_eq!(result, dec!(84));
+    /// ```
+    pub fn evaluate_with_table(expression: &'str str, table: SymTable) -> Result<Decimal, String> {
+        Self::with_table(expression, table).run()
+    }
+
+    /// Creates a new evaluator with the standard library.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Eval;
+    ///
+    /// let mut eval = Eval::new("sin(pi/2)");
+    /// let result = eval.run().unwrap();
+    /// ```
     pub fn new(string: &'str str) -> Self {
         Self::with_table(string, SymTable::stdlib())
     }
 
-    /// Create a new evaluator with an expression string and custom symbol table
+    /// Creates a new evaluator with a custom symbol table.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::{Eval, SymTable};
+    /// use rust_decimal_macros::dec;
+    ///
+    /// let mut table = SymTable::stdlib();
+    /// table.add_const("x", dec!(42)).unwrap();
+    ///
+    /// let mut eval = Eval::with_table("x * 2", table);
+    /// let result = eval.run().unwrap();
+    /// assert_eq!(result, dec!(84));
+    /// ```
     pub fn with_table(string: &'str str, table: SymTable) -> Self {
         let source = Source::new(string);
         Self {
@@ -91,12 +161,12 @@ impl<'str> Eval<'str> {
         }
     }
 
-    /// Create a new evaluator from a Source reference
+    /// Creates a new evaluator from a [`Source`] reference.
     pub fn new_from_source(source: &'str Source<'str>) -> Self {
         Self::from_source_with_table(source, SymTable::stdlib())
     }
 
-    /// Create a new evaluator from a Source reference with custom symbol table
+    /// Creates a new evaluator from a [`Source`] reference with a custom symbol table.
     pub fn from_source_with_table(source: &'str Source<'str>, table: SymTable) -> Self {
         Self {
             source: EvalSource::Source(Cow::Borrowed(source)),
@@ -104,12 +174,14 @@ impl<'str> Eval<'str> {
         }
     }
 
-    /// Create a new evaluator from a compiled binary file
+    /// Creates a new evaluator from a compiled binary file.
+    ///
+    /// The file must have been created using [`compile_to_file`](Self::compile_to_file).
     pub fn new_from_file(path: PathBuf) -> Self {
         Self::from_file_with_table(path, SymTable::stdlib())
     }
 
-    /// Create a new evaluator from a compiled binary file with custom symbol table
+    /// Creates a new evaluator from a compiled binary file with a custom symbol table.
     pub fn from_file_with_table(path: PathBuf, table: SymTable) -> Self {
         Self {
             source: EvalSource::File(path),
@@ -117,18 +189,58 @@ impl<'str> Eval<'str> {
         }
     }
 
+    /// Evaluates the expression and returns the result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Eval;
+    ///
+    /// let mut eval = Eval::new("2 + 3");
+    /// assert_eq!(eval.run().unwrap().to_string(), "5");
+    /// ```
     pub fn run(&mut self) -> Result<Decimal, String> {
         let program = self.build_program()?;
         Vm::default().run(&program).map_err(|err| err.to_string())
     }
 
+    /// Compiles the expression to a binary file.
+    ///
+    /// The compiled bytecode can later be loaded with [`new_from_file`](Self::new_from_file).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use expr_solver::Eval;
+    /// use std::path::PathBuf;
+    ///
+    /// let mut eval = Eval::new("2 + 3 * 4");
+    /// eval.compile_to_file(&PathBuf::from("expr.bin")).unwrap();
+    /// ```
     pub fn compile_to_file(&mut self, path: &PathBuf) -> Result<(), String> {
         let program = self.build_program()?;
         let binary_data = program.compile().map_err(|err| err.to_string())?;
         fs::write(path, binary_data).map_err(|err| err.to_string())
     }
 
-    pub fn build_program(&mut self) -> Result<Program<'_>, String> {
+    /// Returns a human-readable assembly representation of the compiled expression.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Eval;
+    ///
+    /// let mut eval = Eval::new("2 + 3");
+    /// let assembly = eval.get_assembly().unwrap();
+    /// assert!(assembly.contains("PUSH"));
+    /// assert!(assembly.contains("ADD"));
+    /// ```
+    pub fn get_assembly(&mut self) -> Result<String, String> {
+        let program = self.build_program()?;
+        Ok(program.get_assembly())
+    }
+
+    fn build_program(&mut self) -> Result<Program<'_>, String> {
         match &self.source {
             EvalSource::Source(source) => {
                 let mut parser = Parser::new(source);

@@ -29,8 +29,10 @@ pub enum ProgramError {
     CorrupedInstruction(String),
 }
 
-/// Executable program is still a sequence of `Instr<'sym>` referencing symbols
-/// inside a provided `SymTable`.
+/// Executable program containing bytecode instructions.
+///
+/// Programs reference symbols from a [`SymTable`] and can be serialized
+/// to binary format for storage or transmission.
 #[derive(Default)]
 pub struct Program<'sym> {
     pub version: String,
@@ -88,6 +90,7 @@ enum BinaryInstr {
 }
 
 impl<'sym> Program<'sym> {
+    /// Creates a new empty program.
     pub fn new() -> Self {
         Self {
             version: PROGRAM_VERSION.to_string(),
@@ -95,6 +98,7 @@ impl<'sym> Program<'sym> {
         }
     }
 
+    /// Compiles the program to binary format for serialization.
     pub fn compile(&self) -> Result<Vec<u8>, ProgramError> {
         let binary = self.to_binary();
         let config = config::standard();
@@ -102,6 +106,9 @@ impl<'sym> Program<'sym> {
             .map_err(|err| ProgramError::CompileError(format!("failed to encode program: {}", err)))
     }
 
+    /// Loads a program from binary data with the given symbol table.
+    ///
+    /// The binary data must have been created with [`compile`](Self::compile).
     pub fn load(data: &[u8], table: &'sym SymTable) -> Result<Program<'sym>, ProgramError> {
         let config = config::standard();
         let (decoded, _): (Binary, usize) = bincode::serde::decode_from_slice(&data, config)
@@ -181,6 +188,7 @@ impl<'sym> Program<'sym> {
         Ok(())
     }
 
+    /// Returns a human-readable assembly representation of the program.
     pub fn get_assembly(&self) -> String {
         use std::fmt::Write as _;
 

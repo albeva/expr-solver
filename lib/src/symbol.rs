@@ -48,10 +48,12 @@ pub enum SymbolError {
     DuplicateSymbol(String),
 }
 
-/// What a symbol represents in the language.
+/// A symbol representing either a constant or function.
+///
+/// Symbols are stored in a [`SymTable`] and referenced during evaluation.
 #[derive(Debug, Clone)]
 pub enum Symbol {
-    /// Named constant (e.g., `pi`). Returns a Decimal for now.
+    /// Named constant (e.g., `pi`).
     Const {
         name: Cow<'static, str>,
         value: Decimal,
@@ -60,7 +62,9 @@ pub enum Symbol {
     /// Function with specified arity and callback.
     Func {
         name: Cow<'static, str>,
+        /// Minimum number of arguments
         args: usize,
+        /// Whether the function accepts additional arguments
         variadic: bool,
         callback: fn(&[Decimal]) -> Result<Decimal, FuncError>,
         description: Option<Cow<'static, str>>,
@@ -68,6 +72,7 @@ pub enum Symbol {
 }
 
 impl Symbol {
+    /// Returns the name of the symbol.
     pub fn name(&self) -> &str {
         match self {
             Symbol::Const { name, .. } => name,
@@ -75,6 +80,7 @@ impl Symbol {
         }
     }
 
+    /// Returns the description of the symbol, if available.
     pub fn description(&self) -> Option<&str> {
         match self {
             Symbol::Const { description, .. } => description.as_deref(),
@@ -84,18 +90,31 @@ impl Symbol {
 }
 
 /// Symbol table containing constants and functions.
+///
+/// The table stores mathematical constants like `pi` and functions like `sin`.
+/// Symbol lookups are case-insensitive.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::SymTable;
+/// use rust_decimal_macros::dec;
+///
+/// let mut table = SymTable::stdlib();
+/// table.add_const("x", dec!(42)).unwrap();
+/// ```
 #[derive(Debug, Default, Clone)]
 pub struct SymTable {
     symbols: Vec<Symbol>,
 }
 
 impl SymTable {
-    /// Create an empty symbol table.
+    /// Creates an empty symbol table.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Create a symbol table with built-in constants and functions.
+    /// Creates a symbol table with the standard library.
     ///
     /// ## Constants
     /// - `pi` - π (3.14159...)
@@ -161,17 +180,17 @@ impl SymTable {
                 },
                 Symbol::Const {
                     name: "ln2".into(),
-                    value: Decimal::from_f64(std::f64::consts::LN_2).unwrap(),
+                    value: Decimal::TWO.ln(),
                     description: Some("Natural logarithm of 2".into()),
                 },
                 Symbol::Const {
                     name: "ln10".into(),
-                    value: Decimal::from_f64(std::f64::consts::LN_10).unwrap(),
+                    value: Decimal::TEN.log10(),
                     description: Some("Natural logarithm of 10".into()),
                 },
                 Symbol::Const {
                     name: "sqrt2".into(),
-                    value: Decimal::from_f64(std::f64::consts::SQRT_2).unwrap(),
+                    value: Decimal::TWO.sqrt().unwrap(),
                     description: Some("Square root of 2".into()),
                 },
                 // Trigonometric functions
@@ -482,7 +501,9 @@ impl SymTable {
         }
     }
 
-    /// Add a constant to the table.
+    /// Adds a constant to the table.
+    ///
+    /// Returns an error if a symbol with the same name already exists.
     pub fn add_const<S: Into<Cow<'static, str>>>(
         &mut self,
         name: S,
@@ -500,7 +521,13 @@ impl SymTable {
         Ok(self)
     }
 
-    /// Add a function to the table.
+    /// Adds a function to the table.
+    ///
+    /// # Parameters
+    /// - `name`: Function name
+    /// - `args`: Minimum number of arguments
+    /// - `variadic`: Whether the function accepts additional arguments
+    /// - `callback`: Function implementation
     ///
     /// Returns an error if a symbol with the same name already exists.
     pub fn add_func<S: Into<Cow<'static, str>>>(
@@ -524,14 +551,14 @@ impl SymTable {
         Ok(self)
     }
 
-    /// Look up a symbol by name (case-insensitive).
+    /// Looks up a symbol by name (case-insensitive).
     pub fn get(&self, name: &str) -> Option<&Symbol> {
         self.symbols
             .iter()
             .find(|sym| sym.name().eq_ignore_ascii_case(name))
     }
 
-    /// Get an iterator over all symbols in the table.
+    /// Returns an iterator over all symbols in the table.
     pub fn symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.symbols.iter()
     }

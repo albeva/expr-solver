@@ -19,8 +19,7 @@ fn eval_err(expr: &str) -> String {
 
 // Helper function to evaluate an expression with a custom symbol table and expect an Ok result.
 fn eval_with_custom_table_ok(expr: &str, table: SymTable) -> Decimal {
-    let mut eval = Eval::with_table(expr, table);
-    eval.run().expect("Evaluation should be successful")
+    Eval::evaluate_with_table(expr, table).expect("Evaluation should be successful")
 }
 
 #[test]
