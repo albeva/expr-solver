@@ -15,6 +15,6 @@ name = "expr-solver"
 path = "src/main.rs"
 
 [dependencies]
-expr-solver-lib = { version = "1.0.1", path = "../lib" }
+expr-solver-lib = { version = "1.0.2", path = "../lib" }
 clap = { version = "4.0", features = ["derive"] }
 rust_decimal = { workspace = true }
