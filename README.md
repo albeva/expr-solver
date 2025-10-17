@@ -40,7 +40,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-lib = "1.0.2"
+expr-solver-lib = "1.0.3"
 ```
 
 ### As a binary
@@ -49,7 +49,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-bin = "1.0.2"
+expr-solver-bin = "1.0.3"
 ```
 
 ### Basic Example
