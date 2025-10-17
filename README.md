@@ -1,3 +1,5 @@
+[![Rust](https://github.com/albeva/expr-solver/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/albeva/expr-solver/actions/workflows/rust.yml)
+
 # expr-solver
 
 A simple mathematical expression solver library written in Rust.
