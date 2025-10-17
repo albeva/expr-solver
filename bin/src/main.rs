@@ -8,7 +8,7 @@ use std::path::PathBuf;
 #[command(version, about, long_about = None, arg_required_else_help = true)]
 struct Args {
     /// Expression to evaluate
-    #[arg(short, long, conflicts_with_all = ["input", "expr"])]
+    #[arg(short, long, conflicts_with_all = ["input", "expr", "symbol_table"])]
     expression: Option<String>,
 
     /// Expression to evaluate (positional)
@@ -20,7 +20,7 @@ struct Args {
     input: Option<PathBuf>,
 
     /// Save compiled expression to binary file
-    #[arg(short, long)]
+    #[arg(short, long, conflicts_with_all = ["assembly", "symbol_table"])]
     output: Option<PathBuf>,
 
     /// Define constants (e.g., -D x=5.0)
@@ -28,7 +28,7 @@ struct Args {
     define: Vec<(String, f64)>,
 
     /// List all available functions and constants
-    #[arg(short = 't', long)]
+    #[arg(short = 't', long, conflicts_with_all=["expression", "expr", "input", "output", "assembly"])]
     symbol_table: bool,
 
     /// Print the assembly code
