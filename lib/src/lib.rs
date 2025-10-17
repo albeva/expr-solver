@@ -25,7 +25,7 @@ mod symbol;
 mod token;
 mod vm;
 
-use std::{borrow::Cow, fs, path::PathBuf};
+use std::{borrow::Cow, fmt, fs, path::PathBuf};
 
 // Public API
 pub use ir::IrBuilder;
@@ -39,6 +39,25 @@ pub use sema::Sema;
 pub use source::Source;
 pub use symbol::{SymTable, Symbol, SymbolError};
 pub use vm::{Vm, VmError};
+
+/// A wrapper that formats errors with source code highlighting
+struct FormattedError {
+    message: String,
+}
+
+impl fmt::Display for FormattedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl<T: SpanError> From<(&T, &Source<'_>)> for FormattedError {
+    fn from((error, source): (&T, &Source<'_>)) -> Self {
+        Self {
+            message: format!("{}\n{}", error, source.highlight(&error.span())),
+        }
+    }
+}
 
 #[derive(Debug)]
 enum EvalSource<'str> {
@@ -97,14 +116,14 @@ impl<'str> Eval<'str> {
                 let mut parser = Parser::new(source);
                 let mut ast: Expr = match parser
                     .parse()
-                    .map_err(|err| Self::error_with_source(&err, source))?
+                    .map_err(|err| FormattedError::from((&err, source.as_ref())).to_string())?
                 {
                     Some(ast) => ast,
                     None => return Ok(Program::default()),
                 };
                 Sema::new(table)
                     .visit(&mut ast)
-                    .map_err(|err| Self::error_with_source(&err, source))?;
+                    .map_err(|err| FormattedError::from((&err, source.as_ref())).to_string())?;
                 IrBuilder::new().build(&ast).map_err(|err| err.to_string())
             }
             EvalSource::File(path) => {
@@ -112,9 +131,5 @@ impl<'str> Eval<'str> {
                 Program::load(&binary_data, table).map_err(|err| err.to_string())
             }
         }
-    }
-
-    fn error_with_source<T: SpanError>(error: &T, source: &Source) -> String {
-        format!("{}\n{}", error, source.highlight(&error.span()))
     }
 }

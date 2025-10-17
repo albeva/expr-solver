@@ -7,11 +7,11 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(version, about, long_about = None, arg_required_else_help = true)]
 struct Args {
-    /// Expression to evaluate
-    #[arg(short, long, conflicts_with_all = ["input", "expr", "symbol_table"])]
+    /// Expression to evaluate (can be provided as positional argument or with -e/--expression)
+    #[arg(short, long, conflicts_with = "input")]
     expression: Option<String>,
 
-    /// Expression to evaluate (positional)
+    /// Expression to evaluate (positional, alternative to -e/--expression)
     #[arg(conflicts_with_all = ["expression", "input", "symbol_table"])]
     expr: Option<String>,
 

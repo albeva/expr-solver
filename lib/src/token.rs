@@ -46,17 +46,11 @@ impl<'src> Token<'src> {
     }
 
     pub fn is_right_associative(&self) -> bool {
-        match self {
-            Token::Caret => true,
-            _ => false,
-        }
+        matches!(self, Token::Caret)
     }
 
     pub fn is_postfix_unary(&self) -> bool {
-        match self {
-            Token::Bang => true,
-            _ => false,
-        }
+        matches!(self, Token::Bang)
     }
 
     pub fn lexeme(&self) -> Cow<'src, str> {

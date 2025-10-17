@@ -7,6 +7,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Current version of the program format
+const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 /// Expression parsing and evaluation errors.
 #[derive(Error, Debug)]
 pub enum ProgramError {
@@ -87,7 +90,7 @@ enum BinaryInstr {
 impl<'sym> Program<'sym> {
     pub fn new() -> Self {
         Self {
-            version: env!("CARGO_PKG_VERSION").to_string(),
+            version: PROGRAM_VERSION.to_string(),
             code: Vec::new(),
         }
     }
@@ -169,10 +172,9 @@ impl<'sym> Program<'sym> {
     }
 
     fn validate_version(version: &String) -> Result<(), ProgramError> {
-        let current_version = env!("CARGO_PKG_VERSION");
-        if version != current_version {
+        if version != PROGRAM_VERSION {
             return Err(ProgramError::IncompatibleVersions(
-                current_version.to_string(),
+                PROGRAM_VERSION.to_string(),
                 version.clone(),
             ));
         }

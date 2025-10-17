@@ -197,17 +197,14 @@ impl Vm {
             return Err(VmError::InvalidFactorial { value: n });
         }
 
-        // Calculate factorial using safe multiplication
+        // Calculate factorial using safe multiplication with iterator
         let n_u64 = n.to_u64().unwrap();
-        let mut result = Decimal::ONE;
-        for i in 1..=n_u64 {
-            result =
-                result
-                    .checked_mul(Decimal::from(i))
-                    .ok_or_else(|| VmError::ArithmeticError {
-                        message: format!("Factorial calculation overflow at {}!", i),
-                    })?;
-        }
+        let result = (1..=n_u64).try_fold(Decimal::ONE, |acc, i| {
+            acc.checked_mul(Decimal::from(i))
+                .ok_or_else(|| VmError::ArithmeticError {
+                    message: format!("Factorial calculation overflow at {}!", i),
+                })
+        })?;
 
         stack.push(result);
         Ok(())
