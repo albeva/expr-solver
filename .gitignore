@@ -1,14 +1,9 @@
 # target directory
-target/
-.cargo/
+/target
+/.*
 
 # Cargo files
 Cargo.lock
 
-# IDE-specific files (e.g., VS Code)
-.vscode/
-.idea/
-
 # Operating system files
-.DS_Store
 Thumbs.db
