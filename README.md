@@ -36,14 +36,6 @@ fn main() {
 }
 ```
 
-### As a Binary
-
-Run expressions from the command line:
-
-```bash
-cargo run
-```
-
 This will evaluate the hardcoded expression `2 + 3 * 4` and print the result.
 
 ## Testing
@@ -53,15 +45,6 @@ Run the test suite:
 ```bash
 # Run all tests
 cargo test
-
-# Run only unit tests
-cargo test --lib
-
-# Run only integration tests
-cargo test --test integration_tests
-
-# Run doc tests
-cargo test --doc
 ```
 
 ## License
