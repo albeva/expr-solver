@@ -1,4 +1,3 @@
-use crate::parser::ParseError;
 use crate::span::Span;
 use colored::Colorize;
 use unicode_width::UnicodeWidthStr;
@@ -13,9 +12,9 @@ impl<'str> Source<'str> {
     /// Create a new source from input string.
     ///
     /// Validates input length and trims whitespace.
-    pub fn new(input: &'str str) -> Result<Self, ParseError> {
+    pub fn new(input: &'str str) -> Self {
         let trimmed = input.trim();
-        Ok(Self { input: trimmed })
+        Self { input: trimmed }
     }
 
     /// Return source string with a highlighted section

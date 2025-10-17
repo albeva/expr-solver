@@ -53,12 +53,12 @@ pub struct Eval<'str> {
 }
 
 impl<'str> Eval<'str> {
-    pub fn new(string: &'str str) -> Result<Self, String> {
-        let source = Source::new(string).map_err(|err| err.to_string())?;
-        Ok(Self {
+    pub fn new(string: &'str str) -> Self {
+        let source = Source::new(string);
+        Self {
             source: EvalSource::Source(Cow::Owned(source)),
             table: None,
-        })
+        }
     }
 
     pub fn new_from_source(source: &'str Source<'str>) -> Self {

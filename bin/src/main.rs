@@ -68,10 +68,10 @@ fn run() -> Result<(), String> {
     let mut eval = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
         Eval::new(expr)
     } else if let Some(input) = &args.input {
-        Ok(Eval::new_from_file(input.clone()))
+        Eval::new_from_file(input.clone())
     } else {
         return Err("no input".to_string());
-    }?;
+    };
 
     eval.with_table(table);
 
