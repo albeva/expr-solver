@@ -1,7 +1,6 @@
 use expr_solver::{Eval, SymTable};
 use indoc::indoc;
-use rust_decimal::Decimal;
-use rust_decimal::prelude::FromPrimitive;
+use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
 
 // Helper function to evaluate an expression and expect an Ok result.
@@ -65,10 +64,7 @@ fn test_constants() {
     assert_eq!(eval_ok("pi"), Decimal::PI);
     assert_eq!(eval_ok("e"), Decimal::E);
     assert_eq!(eval_ok("tau"), Decimal::TWO_PI);
-    assert_eq!(
-        eval_ok("ln2"),
-        Decimal::from_f64(std::f64::consts::LN_2).unwrap()
-    );
+    assert_eq!(eval_ok("ln2"), Decimal::TWO.ln());
 }
 
 #[test]
