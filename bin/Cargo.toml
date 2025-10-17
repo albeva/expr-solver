@@ -1,8 +1,8 @@
 [package]
 name = "expr-solver-bin"
 version = "1.0.0"
-edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+edition = "2024"
+authors = ["Albert Varaksin <albeva@me.com>"]
 description = "Command-line interface for the expr-solver library"
 license = "MIT"
 

@@ -2,10 +2,10 @@
 name = "expr-solver-lib"
 version = "1.0.0"
 edition = "2024"
-authors = ["Your Name <albeva@me.com>"]
+authors = ["Albert Varaksin <albeva@me.com>"]
 description = "A simple math expression solver library"
 license = "MIT"
-readme = "README.md"
+readme = "../README.md"
 repository = "https://github.com/albeva/expr-solver"
 keywords = ["math", "expression", "parser", "evaluator", "calculator"]
 categories = ["mathematics", "parser-implementations"]
