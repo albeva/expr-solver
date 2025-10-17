@@ -1,6 +1,6 @@
 [package]
 name = "expr-solver-bin"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Command-line interface for the expr-solver library"
@@ -11,6 +11,6 @@ name = "expr-solver"
 path = "src/main.rs"
 
 [dependencies]
-expr-solver-lib = { path = "../lib" }
+expr-solver-lib = { version = "1.0.0", path = "../lib" }
 clap = { version = "4.0", features = ["derive"] }
 rust_decimal = { workspace = true }
