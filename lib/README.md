@@ -1,0 +1,68 @@
+# expr-solver
+
+A simple mathematical expression solver library written in Rust.
+
+## Features
+
+- **Evaluate simple math expressions**
+- **Register custom constants and functions**
+- **Proper error handling** with source location information
+- **Compilation to bytecode** with serialization support
+- **Stack-based virtual machine** for efficient execution
+
+## Usage
+
+### As a Library
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+expr-solver = "0.1.0"
+```
+
+### Basic Example
+
+```rust
+use expr_solver::{Source, evaluate};
+
+fn main() {
+    let source = Source::new("2 + 3 * 4");
+    match evaluate(&source) {
+        Ok(result) => println!("Result: {}", result), // Result: 14
+        Err(err) => eprintln!("Error: {}", source.error(&err)),
+    }
+}
+```
+
+### As a Binary
+
+Run expressions from the command line:
+
+```bash
+cargo run
+```
+
+This will evaluate the hardcoded expression `2 + 3 * 4` and print the result.
+
+## Testing
+
+Run the test suite:
+
+```bash
+# Run all tests
+cargo test
+
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
+cargo test --test integration_tests
+
+# Run doc tests
+cargo test --doc
+```
+
+## License
+
+This project is licensed under the MIT License.

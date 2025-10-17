@@ -1,0 +1,24 @@
+[package]
+name = "expr-solver-lib"
+version = "0.1.0"
+edition = "2024"
+authors = ["Your Name <albeva@me.com>"]
+description = "A simple math expression solver library"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/albeva/expr-solver"
+keywords = ["math", "expression", "parser", "evaluator", "calculator"]
+categories = ["mathematics", "parser-implementations"]
+
+[lib]
+name = "expr_solver"
+
+[dependencies]
+indoc = "2.0.6"
+bincode = { version = "2.0.1", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+colored = "3.0.0"
+thiserror = "2.0.17"
+unicode-width = "0.2.2"
+rust_decimal_macros = { version = "1.39" }
+rust_decimal = { workspace = true }
