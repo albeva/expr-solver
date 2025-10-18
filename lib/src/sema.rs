@@ -169,7 +169,7 @@ impl<'src, 'sym> Sema<'sym> {
         &self,
         name: &str,
         span: Span,
-    ) -> Result<(usize, &'sym Symbol), SemaError> {
+    ) -> Result<(usize, &Symbol), SemaError> {
         self.table
             .get_with_index(name)
             .ok_or_else(|| SemaError::UndefinedSymbol {
