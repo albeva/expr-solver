@@ -24,7 +24,7 @@ impl SpanError for ParseError {
     }
 }
 
-pub type ParseResult<'src, 'sym> = Result<Expr<'src, 'sym>, ParseError>;
+pub type ParseResult<'src> = Result<Expr<'src>, ParseError>;
 
 /// Recursive descent parser for mathematical expressions.
 ///
@@ -35,7 +35,7 @@ pub struct Parser<'src> {
     span: Span,
 }
 
-impl<'src, 'sym> Parser<'src> {
+impl<'src> Parser<'src> {
     /// Creates a new parser from a source.
     pub fn new(source: &'src Source) -> Self {
         let mut lexer = Lexer::new(source);
@@ -51,7 +51,7 @@ impl<'src, 'sym> Parser<'src> {
     /// Parses the source into an abstract syntax tree.
     ///
     /// Returns `None` for empty input, or an expression AST on success.
-    pub fn parse(&mut self) -> Result<Option<Expr<'src, 'sym>>, ParseError> {
+    pub fn parse(&mut self) -> Result<Option<Expr<'src>>, ParseError> {
         if self.lookahead == Token::EOF {
             return Ok(None);
         }
@@ -60,12 +60,12 @@ impl<'src, 'sym> Parser<'src> {
         Ok(Some(expr))
     }
 
-    fn expression(&mut self) -> ParseResult<'src, 'sym> {
+    fn expression(&mut self) -> ParseResult<'src> {
         let lhs = self.primary()?;
         self.climb(lhs, 1)
     }
 
-    fn primary(&mut self) -> ParseResult<'src, 'sym> {
+    fn primary(&mut self) -> ParseResult<'src> {
         let span = self.span;
         match self.lookahead {
             Token::Number(n) => {
@@ -100,11 +100,11 @@ impl<'src, 'sym> Parser<'src> {
         }
     }
 
-    fn call(&mut self, id: &'src str, span: Span) -> ParseResult<'src, 'sym> {
+    fn call(&mut self, id: &'src str, span: Span) -> ParseResult<'src> {
         // assume lookahead is '('
         self.advance();
 
-        let mut args: Vec<Expr<'src, 'sym>> = Vec::new();
+        let mut args: Vec<Expr<'src>> = Vec::new();
         while self.lookahead != Token::ParenClose {
             let arg = self.expression()?;
             args.push(arg);
@@ -120,7 +120,7 @@ impl<'src, 'sym> Parser<'src> {
         Ok(Expr::call(id, args, span))
     }
 
-    fn climb(&mut self, mut lhs: Expr<'src, 'sym>, min_prec: u8) -> ParseResult<'src, 'sym> {
+    fn climb(&mut self, mut lhs: Expr<'src>, min_prec: u8) -> ParseResult<'src> {
         let mut prec = self.lookahead.precedence();
         while prec >= min_prec {
             // Handle postfix unary operators

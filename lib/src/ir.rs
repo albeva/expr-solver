@@ -1,8 +1,8 @@
 use crate::ast::{BinOp, Expr, ExprKind, UnOp};
 use crate::program::Program;
 use crate::span::Span;
-use crate::symbol::Symbol;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// IR building errors.
@@ -12,10 +12,10 @@ pub enum IrError {
     UndefinedSymbol(String, Span),
 }
 
-#[derive(Debug, Clone)]
-pub enum Instr<'sym> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Instr {
     Push(Decimal),
-    Load(&'sym Symbol),
+    Load(usize), // Index into SymTable
     Neg,
     Add,
     Sub,
@@ -23,7 +23,7 @@ pub enum Instr<'sym> {
     Div,
     Pow,
     Fact,
-    Call(&'sym Symbol, usize), // Symbol and argument count
+    Call(usize, usize), // Index into SymTable and argument count
     // Comparison operators
     Equal,
     NotEqual,
@@ -34,11 +34,11 @@ pub enum Instr<'sym> {
 }
 
 /// Builder for converting AST expressions into bytecode programs.
-pub struct IrBuilder<'sym> {
-    prog: Program<'sym>,
+pub struct IrBuilder {
+    prog: Program,
 }
 
-impl<'src, 'sym> IrBuilder<'sym> {
+impl IrBuilder {
     /// Creates a new IR builder.
     pub fn new() -> Self {
         Self {
@@ -47,21 +47,22 @@ impl<'src, 'sym> IrBuilder<'sym> {
     }
 
     /// Builds a bytecode program from an AST expression.
-    pub fn build(mut self, expr: &Expr<'src, 'sym>) -> Result<Program<'sym>, IrError> {
+    pub fn build<'src>(mut self, expr: &Expr<'src>) -> Result<Program, IrError> {
         self.emit(expr)?;
         Ok(self.prog)
     }
 
-    fn emit(&mut self, e: &Expr<'src, 'sym>) -> Result<(), IrError> {
+    fn emit<'src>(&mut self, e: &Expr<'src>) -> Result<(), IrError> {
         match &e.kind {
             ExprKind::Literal(v) => {
                 self.prog.code.push(Instr::Push(*v));
             }
-            ExprKind::Ident { name, sym } => {
-                if sym.is_none() {
+            ExprKind::Ident { name, sym_index } => {
+                if let Some(idx) = sym_index {
+                    self.prog.code.push(Instr::Load(*idx));
+                } else {
                     return Err(IrError::UndefinedSymbol(name.to_string(), e.span));
                 }
-                self.prog.code.push(Instr::Load(sym.unwrap()));
             }
             ExprKind::Unary { op, expr } => {
                 self.emit(expr)?;
@@ -87,14 +88,19 @@ impl<'src, 'sym> IrBuilder<'sym> {
                     BinOp::GreaterEqual => Instr::GreaterEqual,
                 });
             }
-            ExprKind::Call { name, args, sym } => {
-                if sym.is_none() {
+            ExprKind::Call {
+                name,
+                args,
+                sym_index,
+            } => {
+                if let Some(idx) = sym_index {
+                    for a in args.iter() {
+                        self.emit(a)?;
+                    }
+                    self.prog.code.push(Instr::Call(*idx, args.len()));
+                } else {
                     return Err(IrError::UndefinedSymbol(name.to_string(), e.span));
                 }
-                for a in args.iter() {
-                    self.emit(a)?;
-                }
-                self.prog.code.push(Instr::Call(sym.unwrap(), args.len()));
             }
         }
         Ok(())

@@ -201,7 +201,9 @@ impl<'str> Eval<'str> {
     /// ```
     pub fn run(&mut self) -> Result<Decimal, String> {
         let program = self.build_program()?;
-        Vm::default().run(&program).map_err(|err| err.to_string())
+        Vm::default()
+            .run(&program, &self.table)
+            .map_err(|err| err.to_string())
     }
 
     /// Compiles the expression to a binary file.
@@ -237,10 +239,10 @@ impl<'str> Eval<'str> {
     /// ```
     pub fn get_assembly(&mut self) -> Result<String, String> {
         let program = self.build_program()?;
-        Ok(program.get_assembly())
+        Ok(program.get_assembly(&self.table))
     }
 
-    fn build_program(&mut self) -> Result<Program<'_>, String> {
+    fn build_program(&mut self) -> Result<Program, String> {
         match &self.source {
             EvalSource::Source(source) => {
                 let mut parser = Parser::new(source);
@@ -258,7 +260,7 @@ impl<'str> Eval<'str> {
             }
             EvalSource::File(path) => {
                 let binary_data = fs::read(path).map_err(|err| err.to_string())?;
-                Program::load(&binary_data, &self.table).map_err(|err| err.to_string())
+                Program::load(&binary_data).map_err(|err| err.to_string())
             }
         }
     }

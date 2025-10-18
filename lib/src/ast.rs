@@ -1,5 +1,4 @@
 use crate::span::Span;
-use crate::symbol::Symbol;
 use crate::token::Token;
 use rust_decimal::Decimal;
 
@@ -55,35 +54,35 @@ impl BinOp {
 }
 
 #[derive(Debug, Clone)]
-pub struct Expr<'src, 'sym> {
-    pub kind: ExprKind<'src, 'sym>,
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExprKind<'src, 'sym> {
+pub enum ExprKind<'src> {
     Literal(Decimal),
     Ident {
         name: &'src str,
-        sym: Option<&'sym Symbol>,
+        sym_index: Option<usize>,
     },
     Unary {
         op: UnOp,
-        expr: Box<Expr<'src, 'sym>>,
+        expr: Box<Expr<'src>>,
     },
     Binary {
         op: BinOp,
-        left: Box<Expr<'src, 'sym>>,
-        right: Box<Expr<'src, 'sym>>,
+        left: Box<Expr<'src>>,
+        right: Box<Expr<'src>>,
     },
     Call {
         name: &'src str,
-        args: Vec<Expr<'src, 'sym>>,
-        sym: Option<&'sym Symbol>,
+        args: Vec<Expr<'src>>,
+        sym_index: Option<usize>,
     },
 }
 
-impl<'src, 'sym> Expr<'src, 'sym> {
+impl<'src> Expr<'src> {
     pub fn literal(value: Decimal, span: Span) -> Self {
         Self {
             kind: ExprKind::Literal(value),
@@ -93,12 +92,15 @@ impl<'src, 'sym> Expr<'src, 'sym> {
 
     pub fn ident(name: &'src str, span: Span) -> Self {
         Self {
-            kind: ExprKind::Ident { name, sym: None },
+            kind: ExprKind::Ident {
+                name,
+                sym_index: None,
+            },
             span,
         }
     }
 
-    pub fn unary(op: UnOp, expr: Expr<'src, 'sym>, span: Span) -> Self {
+    pub fn unary(op: UnOp, expr: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Unary {
                 op,
@@ -108,7 +110,7 @@ impl<'src, 'sym> Expr<'src, 'sym> {
         }
     }
 
-    pub fn binary(op: BinOp, left: Expr<'src, 'sym>, right: Expr<'src, 'sym>, span: Span) -> Self {
+    pub fn binary(op: BinOp, left: Expr<'src>, right: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Binary {
                 op,
@@ -119,12 +121,12 @@ impl<'src, 'sym> Expr<'src, 'sym> {
         }
     }
 
-    pub fn call(name: &'src str, args: Vec<Expr<'src, 'sym>>, span: Span) -> Self {
+    pub fn call(name: &'src str, args: Vec<Expr<'src>>, span: Span) -> Self {
         Self {
             kind: ExprKind::Call {
                 name,
                 args,
-                sym: None,
+                sym_index: None,
             },
             span,
         }

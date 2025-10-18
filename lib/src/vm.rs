@@ -1,9 +1,8 @@
 use crate::ir::Instr;
 use crate::program::Program;
-use crate::symbol::{FuncError, Symbol};
+use crate::symbol::{FuncError, SymTable, Symbol};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
-use std::borrow::Cow;
 use thiserror::Error;
 
 #[cfg(test)]
@@ -19,14 +18,14 @@ pub enum VmError {
     #[error("Invalid stack state at program end: expected 1 element, found {count}")]
     InvalidFinalStack { count: usize },
     #[error("Invalid load operation: cannot load '{symbol_name}' as a constant")]
-    InvalidLoad { symbol_name: Cow<'static, str> },
+    InvalidLoad { symbol_name: String },
     #[error("Invalid call operation: cannot call '{symbol_name}' as a function")]
-    InvalidCall { symbol_name: Cow<'static, str> },
+    InvalidCall { symbol_name: String },
     #[error(
         "Stack underflow on function call '{function_name}': expected {expected} arguments, found {found}"
     )]
     CallStackUnderflow {
-        function_name: Cow<'static, str>,
+        function_name: String,
         expected: usize,
         found: usize,
     },
@@ -36,6 +35,8 @@ pub enum VmError {
     ArithmeticError { message: String },
     #[error("Function error: {0}")]
     FunctionError(FuncError),
+    #[error("Invalid symbol index: {0}")]
+    InvalidSymbolIndex(usize),
 }
 
 /// Stack-based virtual machine for executing bytecode programs.
@@ -55,7 +56,8 @@ impl Vm {
     /// - Division by zero
     /// - Invalid operations (e.g., factorial of non-integer)
     /// - Function errors
-    pub fn run(&self, prog: &Program) -> Result<Decimal, VmError> {
+    /// - Invalid symbol indices
+    pub fn run(&self, prog: &Program, table: &SymTable) -> Result<Decimal, VmError> {
         if prog.code.is_empty() {
             return Ok(Decimal::ZERO);
         }
@@ -63,7 +65,7 @@ impl Vm {
         let mut stack: Vec<Decimal> = Vec::new();
 
         for op in &prog.code {
-            self.execute_instruction(op, &mut stack)?;
+            self.execute_instruction(op, table, &mut stack)?;
         }
 
         match stack.as_slice() {
@@ -72,21 +74,31 @@ impl Vm {
         }
     }
 
-    fn execute_instruction(&self, op: &Instr, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
+    fn execute_instruction(
+        &self,
+        op: &Instr,
+        table: &SymTable,
+        stack: &mut Vec<Decimal>,
+    ) -> Result<(), VmError> {
         match op {
             Instr::Push(v) => {
                 stack.push(*v);
                 Ok(())
             }
-            Instr::Load(sym) => match sym {
-                Symbol::Const { name: _, value, .. } => {
-                    stack.push(*value);
-                    Ok(())
+            Instr::Load(idx) => {
+                let sym = table
+                    .get_by_index(*idx)
+                    .ok_or(VmError::InvalidSymbolIndex(*idx))?;
+                match sym {
+                    Symbol::Const { value, .. } => {
+                        stack.push(*value);
+                        Ok(())
+                    }
+                    _ => Err(VmError::InvalidLoad {
+                        symbol_name: sym.name().to_string(),
+                    }),
                 }
-                _ => Err(VmError::InvalidLoad {
-                    symbol_name: Cow::Owned(sym.name().to_string()),
-                }),
-            },
+            }
             Instr::Neg => {
                 let v = Self::pop(stack)?;
                 stack.push(-v);
@@ -98,7 +110,12 @@ impl Vm {
             Instr::Div => self.div_op(stack),
             Instr::Pow => self.pow_op(stack),
             Instr::Fact => self.fact_op(stack),
-            Instr::Call(sym, argc) => self.call_op(sym, *argc, stack),
+            Instr::Call(idx, argc) => {
+                let sym = table
+                    .get_by_index(*idx)
+                    .ok_or(VmError::InvalidSymbolIndex(*idx))?;
+                self.call_op(sym, *argc, stack)
+            }
             // Comparison operators
             Instr::Equal => self.comparison_op(stack, |a, b| a == b),
             Instr::NotEqual => self.comparison_op(stack, |a, b| a != b),
@@ -232,7 +249,7 @@ impl Vm {
             } => {
                 if argc != *min_args && (!*variadic || argc < *min_args) {
                     return Err(VmError::CallStackUnderflow {
-                        function_name: name.clone(),
+                        function_name: name.to_string(),
                         expected: *min_args,
                         found: argc,
                     });
@@ -241,7 +258,7 @@ impl Vm {
                 // Check if we have enough values on the stack
                 if stack.len() < argc {
                     return Err(VmError::CallStackUnderflow {
-                        function_name: name.clone(),
+                        function_name: name.to_string(),
                         expected: argc,
                         found: stack.len(),
                     });
@@ -255,7 +272,7 @@ impl Vm {
                 Ok(())
             }
             Symbol::Const { .. } => Err(VmError::InvalidCall {
-                symbol_name: Cow::Owned(sym.name().to_string()),
+                symbol_name: sym.name().to_string(),
             }),
         }
     }
@@ -269,7 +286,6 @@ impl Vm {
 mod tests {
     use super::*;
     use crate::symbol::SymTable;
-    use std::borrow::Cow;
 
     fn make(code: Vec<Instr>) -> Program {
         let mut program = Program::new();
@@ -280,33 +296,36 @@ mod tests {
     #[test]
     fn test_vm_error_stack_underflow() {
         let vm = Vm::default();
+        let table = SymTable::stdlib();
         let program = make(
             vec![Instr::Add], // No values on stack
         );
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(result, Err(VmError::StackUnderflow)));
     }
 
     #[test]
     fn test_vm_error_division_by_zero() {
         let vm = Vm::default();
+        let table = SymTable::stdlib();
         let program = make(vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div]);
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
     }
 
     #[test]
     fn test_vm_error_invalid_final_stack() {
         let vm = Vm::default();
+        let table = SymTable::stdlib();
         let program = make(vec![
             Instr::Push(dec!(1)),
             Instr::Push(dec!(2)),
             // No operation to combine them
         ]);
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidFinalStack { count: 2 })
@@ -317,13 +336,13 @@ mod tests {
     fn test_vm_error_invalid_load() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let sin_func = table.get("sin").unwrap();
+        let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
         let program = make(
-            vec![Instr::Load(sin_func)], // Trying to load a function as constant
+            vec![Instr::Load(sin_idx)], // Trying to load a function as constant
         );
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidLoad { symbol_name: _ })
@@ -334,13 +353,13 @@ mod tests {
     fn test_vm_error_invalid_call() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let pi_const = table.get("pi").unwrap();
+        let (pi_idx, _) = table.get_with_index("pi").unwrap();
 
         let program = make(
-            vec![Instr::Call(pi_const, 0)], // Trying to call a constant as function
+            vec![Instr::Call(pi_idx, 0)], // Trying to call a constant as function
         );
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidCall { symbol_name: _ })
@@ -351,13 +370,13 @@ mod tests {
     fn test_vm_error_call_stack_underflow() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let sin_func = table.get("sin").unwrap();
+        let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
         let program = make(
-            vec![Instr::Call(sin_func, 0)], // No arguments for sin function
+            vec![Instr::Call(sin_idx, 0)], // No arguments for sin function
         );
 
-        let result = vm.run(&program);
+        let result = vm.run(&program, &table);
         assert!(matches!(
             result,
             Err(VmError::CallStackUnderflow {
@@ -381,21 +400,21 @@ mod tests {
         );
         assert_eq!(
             VmError::InvalidLoad {
-                symbol_name: Cow::Borrowed("test"),
+                symbol_name: "test".to_string(),
             }
             .to_string(),
             "Invalid load operation: cannot load 'test' as a constant"
         );
         assert_eq!(
             VmError::InvalidCall {
-                symbol_name: Cow::Borrowed("test"),
+                symbol_name: "test".to_string(),
             }
             .to_string(),
             "Invalid call operation: cannot call 'test' as a function"
         );
         assert_eq!(
             VmError::CallStackUnderflow {
-                function_name: Cow::Borrowed("sin"),
+                function_name: "sin".to_string(),
                 expected: 1,
                 found: 0
             }
@@ -407,6 +426,7 @@ mod tests {
     #[test]
     fn test_binary_operations() {
         let vm = Vm::default();
+        let table = SymTable::stdlib();
 
         // Test all binary operations
         let test_cases = vec![
@@ -426,7 +446,7 @@ mod tests {
 
         for (code, expected) in test_cases {
             let program = make(code);
-            assert_eq!(vm.run(&program).unwrap(), expected);
+            assert_eq!(vm.run(&program, &table).unwrap(), expected);
         }
     }
 }

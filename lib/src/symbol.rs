@@ -558,6 +558,19 @@ impl SymTable {
             .find(|sym| sym.name().eq_ignore_ascii_case(name))
     }
 
+    /// Looks up a symbol by name and returns its index and reference (case-insensitive).
+    pub fn get_with_index(&self, name: &str) -> Option<(usize, &Symbol)> {
+        self.symbols
+            .iter()
+            .enumerate()
+            .find(|(_, sym)| sym.name().eq_ignore_ascii_case(name))
+    }
+
+    /// Returns a symbol by index.
+    pub fn get_by_index(&self, index: usize) -> Option<&Symbol> {
+        self.symbols.get(index)
+    }
+
     /// Returns an iterator over all symbols in the table.
     pub fn symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.symbols.iter()

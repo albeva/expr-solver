@@ -56,43 +56,47 @@ impl<'src, 'sym> Sema<'sym> {
     }
 
     /// Analyzes an AST expression, resolving symbols and checking types.
-    pub fn visit(&mut self, ast: &mut Expr<'src, 'sym>) -> Result<(), SemaError> {
+    pub fn visit(&mut self, ast: &mut Expr<'src>) -> Result<(), SemaError> {
         match &mut ast.kind {
             ExprKind::Literal(_) => Ok(()),
-            ExprKind::Ident { name, sym } => self.visit_ident(name, sym, ast.span),
+            ExprKind::Ident { name, sym_index } => self.visit_ident(name, sym_index, ast.span),
             ExprKind::Unary { op: _, expr } => self.visit_unary(expr),
             ExprKind::Binary { op: _, left, right } => self.visit_binary(left, right),
-            ExprKind::Call { name, args, sym } => self.visit_call(name, args, sym, ast.span),
+            ExprKind::Call {
+                name,
+                args,
+                sym_index,
+            } => self.visit_call(name, args, sym_index, ast.span),
         }
     }
 
     fn visit_ident(
         &mut self,
         name: &str,
-        sym: &mut Option<&'sym Symbol>,
+        sym_index: &mut Option<usize>,
         span: Span,
     ) -> Result<(), SemaError> {
-        let s = self.get_symbol(name, span)?;
+        let (idx, sym) = self.get_symbol_with_index(name, span)?;
 
-        let Symbol::Const { .. } = s else {
+        let Symbol::Const { .. } = sym else {
             return Err(SemaError::SymbolIsNotAConstant {
                 name: name.to_string(),
                 span,
             });
         };
 
-        *sym = Some(s);
+        *sym_index = Some(idx);
         Ok(())
     }
 
-    fn visit_unary(&mut self, expr: &mut Expr<'src, 'sym>) -> Result<(), SemaError> {
+    fn visit_unary(&mut self, expr: &mut Expr<'src>) -> Result<(), SemaError> {
         self.visit(expr)
     }
 
     fn visit_binary(
         &mut self,
-        left: &mut Expr<'src, 'sym>,
-        right: &mut Expr<'src, 'sym>,
+        left: &mut Expr<'src>,
+        right: &mut Expr<'src>,
     ) -> Result<(), SemaError> {
         self.visit(left)?;
         self.visit(right)
@@ -101,20 +105,20 @@ impl<'src, 'sym> Sema<'sym> {
     fn visit_call(
         &mut self,
         name: &str,
-        args: &mut Vec<Expr<'src, 'sym>>,
-        sym: &mut Option<&'sym Symbol>,
+        args: &mut Vec<Expr<'src>>,
+        sym_index: &mut Option<usize>,
         span: Span,
     ) -> Result<(), SemaError> {
         // span here will include a whole call expression,
         // but is guaranteed to start with the symbol
         let sym_span = Span::new(span.start, span.start + name.len());
-        let s = self.get_symbol(name, sym_span)?;
+        let (idx, sym) = self.get_symbol_with_index(name, sym_span)?;
 
         let Symbol::Func {
             args: min_args,
             variadic,
             ..
-        } = s
+        } = sym
         else {
             return Err(SemaError::SymbolIsNotAFunction {
                 name: name.to_string(),
@@ -125,7 +129,7 @@ impl<'src, 'sym> Sema<'sym> {
         self.validate_arity(name, args.len(), *min_args, *variadic, span)?;
         self.analyse_arguments(args)?;
 
-        *sym = Some(s);
+        *sym_index = Some(idx);
         Ok(())
     }
 
@@ -157,13 +161,17 @@ impl<'src, 'sym> Sema<'sym> {
         }
     }
 
-    fn analyse_arguments(&mut self, args: &mut [Expr<'src, 'sym>]) -> Result<(), SemaError> {
+    fn analyse_arguments(&mut self, args: &mut [Expr<'src>]) -> Result<(), SemaError> {
         args.iter_mut().try_for_each(|a| self.visit(a))
     }
 
-    fn get_symbol(&self, name: &str, span: Span) -> Result<&'sym Symbol, SemaError> {
+    fn get_symbol_with_index(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Result<(usize, &'sym Symbol), SemaError> {
         self.table
-            .get(name)
+            .get_with_index(name)
             .ok_or_else(|| SemaError::UndefinedSymbol {
                 name: name.to_string(),
                 span,
