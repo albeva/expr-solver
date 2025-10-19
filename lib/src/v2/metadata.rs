@@ -31,23 +31,3 @@ pub enum SymbolKind {
         variadic: bool,
     },
 }
-
-impl SymbolMetadata {
-    /// Creates metadata for a constant symbol.
-    pub fn constant(name: impl Into<Cow<'static, str>>) -> Self {
-        Self {
-            name: name.into(),
-            kind: SymbolKind::Const,
-            index: None,
-        }
-    }
-
-    /// Creates metadata for a function symbol.
-    pub fn function(name: impl Into<Cow<'static, str>>, arity: usize, variadic: bool) -> Self {
-        Self {
-            name: name.into(),
-            kind: SymbolKind::Func { arity, variadic },
-            index: None,
-        }
-    }
-}

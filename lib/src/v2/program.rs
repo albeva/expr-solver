@@ -374,13 +374,10 @@ impl Program<Linked> {
         Self::format_assembly(&self.state.bytecode, &self.state.symtable)
     }
 
-    /// Serializes the program to binary format.
-    ///
-    /// This involves reverse-mapping the bytecode indices back to metadata indices.
-    pub fn serialize(&self) -> Result<Vec<u8>, ProgramError> {
-        // Step 1: Find all symbol indices used in bytecode
+    /// Collects all symbol indices used in bytecode.
+    fn collect_used_indices(bytecode: &[Instr]) -> BTreeSet<usize> {
         let mut used_indices = BTreeSet::new();
-        for instr in &self.state.bytecode {
+        for instr in bytecode {
             match instr {
                 Instr::Load(idx) | Instr::Call(idx, _) => {
                     used_indices.insert(*idx);
@@ -388,6 +385,15 @@ impl Program<Linked> {
                 _ => {}
             }
         }
+        used_indices
+    }
+
+    /// Serializes the program to binary format.
+    ///
+    /// This involves reverse-mapping the bytecode indices back to metadata indices.
+    pub fn serialize(&self) -> Result<Vec<u8>, ProgramError> {
+        // Step 1: Find all symbol indices used in bytecode
+        let used_indices = Self::collect_used_indices(&self.state.bytecode);
 
         // Step 2: Build reverse mapping: symtable_idx → metadata_idx
         // We use Vec since we need index-based lookup
@@ -449,15 +455,7 @@ impl Program<Linked> {
 
     /// Returns a list of all symbols used by this program.
     pub fn emit_symbols(&self) -> Vec<String> {
-        let mut used_indices = BTreeSet::new();
-        for instr in &self.state.bytecode {
-            match instr {
-                Instr::Load(idx) | Instr::Call(idx, _) => {
-                    used_indices.insert(*idx);
-                }
-                _ => {}
-            }
-        }
+        let used_indices = Self::collect_used_indices(&self.state.bytecode);
 
         used_indices
             .iter()
@@ -479,41 +477,36 @@ impl Program<Linked> {
             .bright_black()
             .to_string();
 
-        let emit = |mnemonic: &str| -> String { format!("{}", mnemonic.magenta()) };
-        let emit1 = |mnemonic: &str, op: &str| -> String {
-            format!("{} {}", mnemonic.magenta(), op.green())
-        };
-
         for (i, instr) in bytecode.iter().enumerate() {
             let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
             let line = match instr {
-                Instr::Push(v) => emit1("PUSH", &v.to_string()),
+                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
                 Instr::Load(idx) => {
                     let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
-                    emit1("LOAD", &sym_name.blue())
+                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
                 }
-                Instr::Neg => emit("NEG"),
-                Instr::Add => emit("ADD"),
-                Instr::Sub => emit("SUB"),
-                Instr::Mul => emit("MUL"),
-                Instr::Div => emit("DIV"),
-                Instr::Pow => emit("POW"),
-                Instr::Fact => emit("FACT"),
+                Instr::Neg => format!("{}", "NEG".magenta()),
+                Instr::Add => format!("{}", "ADD".magenta()),
+                Instr::Sub => format!("{}", "SUB".magenta()),
+                Instr::Mul => format!("{}", "MUL".magenta()),
+                Instr::Div => format!("{}", "DIV".magenta()),
+                Instr::Pow => format!("{}", "POW".magenta()),
+                Instr::Fact => format!("{}", "FACT".magenta()),
                 Instr::Call(idx, argc) => {
                     let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
                     format!(
                         "{} {} args: {}",
-                        emit("CALL"),
+                        "CALL".magenta(),
                         sym_name.cyan(),
                         argc.to_string().bright_blue()
                     )
                 }
-                Instr::Equal => emit("EQ"),
-                Instr::NotEqual => emit("NEQ"),
-                Instr::Less => emit("LT"),
-                Instr::LessEqual => emit("LTE"),
-                Instr::Greater => emit("GT"),
-                Instr::GreaterEqual => emit("GTE"),
+                Instr::Equal => format!("{}", "EQ".magenta()),
+                Instr::NotEqual => format!("{}", "NEQ".magenta()),
+                Instr::Less => format!("{}", "LT".magenta()),
+                Instr::LessEqual => format!("{}", "LTE".magenta()),
+                Instr::Greater => format!("{}", "GT".magenta()),
+                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
             };
             let _ = writeln!(out, "{}", line);
         }

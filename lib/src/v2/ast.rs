@@ -72,7 +72,6 @@ pub enum ExprKind {
     Literal(Decimal),
     Ident {
         name: String,
-        sym_index: Option<usize>,
     },
     Unary {
         op: UnOp,
@@ -86,7 +85,6 @@ pub enum ExprKind {
     Call {
         name: String,
         args: Vec<Expr>,
-        sym_index: Option<usize>,
     },
 }
 
@@ -100,10 +98,7 @@ impl Expr {
 
     pub fn ident(name: String, span: Span) -> Self {
         Self {
-            kind: ExprKind::Ident {
-                name,
-                sym_index: None,
-            },
+            kind: ExprKind::Ident { name },
             span,
         }
     }
@@ -131,11 +126,7 @@ impl Expr {
 
     pub fn call(name: String, args: Vec<Expr>, span: Span) -> Self {
         Self {
-            kind: ExprKind::Call {
-                name,
-                args,
-                sym_index: None,
-            },
+            kind: ExprKind::Call { name, args },
             span,
         }
     }
