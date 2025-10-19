@@ -4,7 +4,6 @@ use super::ast::{BinOp, Expr, ExprKind, UnOp};
 use super::error::{CompileError, LinkError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
-use super::sema;
 use super::source::Source;
 use crate::ir::Instr;
 use crate::symbol::{Symbol, SymTable};
@@ -12,7 +11,7 @@ use crate::vm::{Vm, VmError};
 use colored::Colorize;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -125,8 +124,7 @@ impl Program<Initial> {
     /// Returns a `Program<Compiled>` state directly.
     pub fn deserialize(self, data: &[u8]) -> Result<Program<Compiled>, ProgramError> {
         let config = bincode::config::standard();
-        let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)
-            .map_err(|e| ProgramError::DeserializationError(e.to_string()))?;
+        let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
 
         // Validate version
         if binary.version != PROGRAM_VERSION {
@@ -152,18 +150,14 @@ impl Program<Initial> {
 
 impl Program<Parsed> {
     /// Compiles the AST to bytecode with symbol metadata.
+    ///
+    /// Does everything in a single AST traversal: generates bytecode and collects
+    /// symbol metadata simultaneously.
     pub fn compile(self) -> Result<Program<Compiled>, ProgramError> {
-        let mut ast = self.state.ast;
+        let ast = self.state.ast;
 
-        // Step 1: Discover all symbols used in the AST
-        let symbols = sema::discover_symbols(&ast);
-
-        // Step 2: Annotate AST with indices (position in symbols vec)
-        sema::annotate_ast_with_indices(&mut ast, &symbols)
-            .map_err(|e| CompileError::SemanticError(e))?;
-
-        // Step 3: Generate bytecode
-        let bytecode = Self::generate_bytecode(&ast)?;
+        // Generate bytecode and collect symbols in one pass
+        let (bytecode, symbols) = Self::generate_bytecode(&ast)?;
 
         Ok(Program {
             state: Compiled {
@@ -174,38 +168,38 @@ impl Program<Parsed> {
         })
     }
 
-    /// Generates bytecode from an annotated AST.
-    fn generate_bytecode(ast: &Expr) -> Result<Vec<Instr>, CompileError> {
+    /// Generates bytecode and collects symbol metadata in a single AST traversal.
+    fn generate_bytecode(ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), CompileError> {
         let mut bytecode = Vec::new();
-        Self::emit_instr(ast, &mut bytecode)?;
-        Ok(bytecode)
+        let mut symbols = Vec::new();
+        Self::emit_instr(ast, &mut bytecode, &mut symbols)?;
+        Ok((bytecode, symbols))
     }
 
-    fn emit_instr(expr: &Expr, bytecode: &mut Vec<Instr>) -> Result<(), CompileError> {
+    fn emit_instr(
+        expr: &Expr,
+        bytecode: &mut Vec<Instr>,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) -> Result<(), CompileError> {
         match &expr.kind {
             ExprKind::Literal(v) => {
                 bytecode.push(Instr::Push(*v));
             }
-            ExprKind::Ident { name, sym_index } => {
-                if let Some(idx) = sym_index {
-                    bytecode.push(Instr::Load(*idx));
-                } else {
-                    return Err(CompileError::CodeGenError(format!(
-                        "Undefined symbol: {}",
-                        name
-                    )));
-                }
+            ExprKind::Ident { name, .. } => {
+                // Get or create index for this constant
+                let idx = Self::get_or_create_symbol(name, SymbolKind::Const, symbols);
+                bytecode.push(Instr::Load(idx));
             }
             ExprKind::Unary { op, expr } => {
-                Self::emit_instr(expr, bytecode)?;
+                Self::emit_instr(expr, bytecode, symbols)?;
                 match op {
                     UnOp::Neg => bytecode.push(Instr::Neg),
                     UnOp::Fact => bytecode.push(Instr::Fact),
                 }
             }
             ExprKind::Binary { op, left, right } => {
-                Self::emit_instr(left, bytecode)?;
-                Self::emit_instr(right, bytecode)?;
+                Self::emit_instr(left, bytecode, symbols)?;
+                Self::emit_instr(right, bytecode, symbols)?;
                 bytecode.push(match op {
                     BinOp::Add => Instr::Add,
                     BinOp::Sub => Instr::Sub,
@@ -220,25 +214,46 @@ impl Program<Parsed> {
                     BinOp::GreaterEqual => Instr::GreaterEqual,
                 });
             }
-            ExprKind::Call {
-                name,
-                args,
-                sym_index,
-            } => {
-                if let Some(idx) = sym_index {
-                    for arg in args {
-                        Self::emit_instr(arg, bytecode)?;
-                    }
-                    bytecode.push(Instr::Call(*idx, args.len()));
-                } else {
-                    return Err(CompileError::CodeGenError(format!(
-                        "Undefined function: {}",
-                        name
-                    )));
+            ExprKind::Call { name, args, .. } => {
+                // Emit arguments first
+                for arg in args {
+                    Self::emit_instr(arg, bytecode, symbols)?;
                 }
+
+                // Get or create index for this function
+                let idx = Self::get_or_create_symbol(
+                    name,
+                    SymbolKind::Func {
+                        arity: args.len(),
+                        variadic: false, // Will be validated during linking
+                    },
+                    symbols,
+                );
+                bytecode.push(Instr::Call(idx, args.len()));
             }
         }
         Ok(())
+    }
+
+    /// Gets existing symbol index or creates a new one.
+    /// For ~50 symbols, linear search is faster than HashMap overhead.
+    fn get_or_create_symbol(
+        name: &str,
+        kind: SymbolKind,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) -> usize {
+        // Check if symbol already exists
+        if let Some(pos) = symbols.iter().position(|s| s.name == name) {
+            return pos;
+        }
+
+        // Create new symbol entry
+        symbols.push(SymbolMetadata {
+            name: name.to_string().into(),
+            kind,
+            index: None,
+        });
+        symbols.len() - 1
     }
 }
 
@@ -249,28 +264,34 @@ impl Program<Parsed> {
 impl Program<Compiled> {
     /// Links the bytecode with a symbol table, validating and remapping indices.
     pub fn link(mut self, table: SymTable) -> Result<Program<Linked>, ProgramError> {
-        // Build remapping table: metadata_index → symtable_index
-        let mut remap = Vec::with_capacity(self.state.symbols.len());
-
-        for metadata in &self.state.symbols {
-            // Look up symbol in provided table
-            let (new_idx, symbol) = table
+        // Validate symbols and fill in their resolved indices
+        for metadata in &mut self.state.symbols {
+            let (resolved_idx, symbol) = table
                 .get_with_index(&metadata.name)
                 .ok_or_else(|| LinkError::MissingSymbol {
-                    name: metadata.name.clone(),
+                    name: metadata.name.to_string(),
                 })?;
 
             // Validate kind matches
             Self::validate_symbol_kind(metadata, symbol)?;
 
-            remap.push(new_idx);
+            // Store resolved index in metadata
+            metadata.index = Some(resolved_idx);
         }
 
-        // Rewrite all indices in bytecode
+        // Rewrite all indices in bytecode using resolved indices from metadata
         for instr in &mut self.state.bytecode {
             match instr {
-                Instr::Load(idx) => *idx = remap[*idx],
-                Instr::Call(idx, _) => *idx = remap[*idx],
+                Instr::Load(idx) => {
+                    *idx = self.state.symbols[*idx]
+                        .index
+                        .expect("Symbol should have been resolved during linking");
+                }
+                Instr::Call(idx, _) => {
+                    *idx = self.state.symbols[*idx]
+                        .index
+                        .expect("Symbol should have been resolved during linking");
+                }
                 _ => {}
             }
         }
@@ -303,19 +324,19 @@ impl Program<Compiled> {
                     Ok(())
                 } else {
                     Err(LinkError::TypeMismatch {
-                        name: metadata.name.clone(),
+                        name: metadata.name.to_string(),
                         expected: format!("function(arity={}, variadic={})", arity, variadic),
                         found: format!("function(arity={}, variadic={})", args, v),
                     })
                 }
             }
             (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.clone(),
+                name: metadata.name.to_string(),
                 expected: "constant".to_string(),
                 found: "function".to_string(),
             }),
             (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.clone(),
+                name: metadata.name.to_string(),
                 expected: "function".to_string(),
                 found: "constant".to_string(),
             }),
@@ -369,15 +390,17 @@ impl Program<Linked> {
         }
 
         // Step 2: Build reverse mapping: symtable_idx → metadata_idx
-        let mut reverse_remap = HashMap::new();
-        let mut symbols = Vec::new();
+        // We use Vec since we need index-based lookup
+        let max_idx = used_indices.iter().max().copied().unwrap_or(0);
+        let mut reverse_remap = vec![None; max_idx + 1];
+        let mut symbols = Vec::with_capacity(used_indices.len());
 
-        for (metadata_idx, symtable_idx) in used_indices.iter().enumerate() {
+        for (metadata_idx, &symtable_idx) in used_indices.iter().enumerate() {
             let symbol = self
                 .state
                 .symtable
-                .get_by_index(*symtable_idx)
-                .ok_or(ProgramError::InvalidSymbolIndex(*symtable_idx))?;
+                .get_by_index(symtable_idx)
+                .ok_or(ProgramError::InvalidSymbolIndex(symtable_idx))?;
 
             let kind = match symbol {
                 Symbol::Const { .. } => SymbolKind::Const,
@@ -388,22 +411,30 @@ impl Program<Linked> {
             };
 
             symbols.push(SymbolMetadata {
-                name: symbol.name().to_string(),
+                name: symbol.name().to_string().into(),
                 kind,
+                index: None,
             });
 
-            reverse_remap.insert(*symtable_idx, metadata_idx);
+            reverse_remap[symtable_idx] = Some(metadata_idx);
         }
 
         // Step 3: Rewrite bytecode to use metadata indices
-        let mut bytecode = self.state.bytecode.clone();
-        for instr in &mut bytecode {
-            match instr {
-                Instr::Load(idx) => *idx = reverse_remap[idx],
-                Instr::Call(idx, _) => *idx = reverse_remap[idx],
-                _ => {}
-            }
-        }
+        let bytecode: Vec<Instr> = self
+            .state
+            .bytecode
+            .iter()
+            .map(|instr| match instr {
+                Instr::Load(idx) => Instr::Load(
+                    reverse_remap[*idx].expect("Symbol should have been mapped"),
+                ),
+                Instr::Call(idx, argc) => Instr::Call(
+                    reverse_remap[*idx].expect("Symbol should have been mapped"),
+                    *argc,
+                ),
+                other => other.clone(),
+            })
+            .collect();
 
         // Step 4: Serialize
         let binary = BinaryFormat {

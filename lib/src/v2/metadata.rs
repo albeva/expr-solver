@@ -1,6 +1,7 @@
 //! Symbol metadata for bytecode validation and linking.
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 /// Metadata about a symbol required by compiled bytecode.
 ///
@@ -9,9 +10,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolMetadata {
     /// The name of the symbol
-    pub name: String,
+    pub name: Cow<'static, str>,
     /// The kind and requirements of the symbol
     pub kind: SymbolKind,
+    /// The resolved index in the linked symbol table (None until linked)
+    #[serde(skip)]
+    pub index: Option<usize>,
 }
 
 /// The kind of symbol (constant or function) with its requirements.
@@ -30,18 +34,20 @@ pub enum SymbolKind {
 
 impl SymbolMetadata {
     /// Creates metadata for a constant symbol.
-    pub fn constant(name: String) -> Self {
+    pub fn constant(name: impl Into<Cow<'static, str>>) -> Self {
         Self {
-            name,
+            name: name.into(),
             kind: SymbolKind::Const,
+            index: None,
         }
     }
 
     /// Creates metadata for a function symbol.
-    pub fn function(name: String, arity: usize, variadic: bool) -> Self {
+    pub fn function(name: impl Into<Cow<'static, str>>, arity: usize, variadic: bool) -> Self {
         Self {
-            name,
+            name: name.into(),
             kind: SymbolKind::Func { arity, variadic },
+            index: None,
         }
     }
 }

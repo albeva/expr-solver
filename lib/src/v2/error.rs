@@ -104,7 +104,7 @@ pub enum ProgramError {
     SerializationError(String),
 
     #[error("Deserialization error: {0}")]
-    DeserializationError(String),
+    DeserializationError(#[from] bincode::error::DecodeError),
 
     #[error("Incompatible program version: expected {expected}, got {found}")]
     IncompatibleVersion { expected: String, found: String },
