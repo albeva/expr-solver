@@ -351,40 +351,37 @@ impl Program<Linked> {
 
         let mut reverse_map = HashMap::new();
         let mut symbols = Vec::new();
-        let mut bytecode = Vec::with_capacity(self.state.bytecode.len());
+
+        // Helper closure to get or create metadata index
+        // All indices are valid since we successfully linked
+        let mut get_or_create_metadata = |idx: usize| -> usize {
+            if let Some(&existing) = reverse_map.get(&idx) {
+                existing
+            } else {
+                let symbol = self
+                    .state
+                    .symtable
+                    .get_by_index(idx)
+                    .expect("symbol index must be valid after linking");
+
+                let new_idx = symbols.len();
+                symbols.push(symbol.into());
+                reverse_map.insert(idx, new_idx);
+                new_idx
+            }
+        };
 
         // Single pass: build symbol mapping and rewrite bytecode
-        for instr in &self.state.bytecode {
-            let new_instr = match instr {
-                Instr::Load(idx) | Instr::Call(idx, _) => {
-                    // Get or create metadata index
-                    let metadata_idx = if let Some(&existing) = reverse_map.get(idx) {
-                        existing
-                    } else {
-                        let symbol = self
-                            .state
-                            .symtable
-                            .get_by_index(*idx)
-                            .ok_or(ProgramError::InvalidSymbolIndex(*idx))?;
-
-                        let new_idx = symbols.len();
-                        symbols.push(symbol.into());
-                        reverse_map.insert(*idx, new_idx);
-                        new_idx
-                    };
-
-                    // Build the new instruction
-                    match instr {
-                        Instr::Load(_) => Instr::Load(metadata_idx),
-                        Instr::Call(_, argc) => Instr::Call(metadata_idx, *argc),
-                        _ => unreachable!(),
-                    }
-                }
+        let bytecode: Vec<Instr> = self
+            .state
+            .bytecode
+            .iter()
+            .map(|instr| match instr {
+                Instr::Load(idx) => Instr::Load(get_or_create_metadata(*idx)),
+                Instr::Call(idx, argc) => Instr::Call(get_or_create_metadata(*idx), *argc),
                 other => other.clone(),
-            };
-
-            bytecode.push(new_instr);
-        }
+            })
+            .collect();
 
         // Serialize
         let binary = BinaryFormat {
