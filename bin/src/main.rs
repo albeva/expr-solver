@@ -65,24 +65,26 @@ fn run() -> Result<(), String> {
     }
 
     // load either from string input or a file
-    let mut eval = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        Eval::with_table(expr, table)
+    let program = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
+        Eval::with_table(expr, table)?
     } else if let Some(input) = &args.input {
-        Eval::from_file_with_table(input.clone(), table)
+        Eval::from_file_with_table(input.clone(), table)?
     } else {
         return Err("no input".to_string());
     };
 
     if args.assembly {
-        print!("{}", eval.get_assembly()?);
+        print!("{}", program.get_assembly());
         return Ok(());
     }
 
     // save to a file?
     if let Some(output_path) = &args.output {
-        eval.compile_to_file(output_path)?
+        program
+            .save_bytecode_to_file(output_path)
+            .map_err(|e| e.to_string())?
     } else {
-        let res = eval.run()?;
+        let res = program.execute().map_err(|e| e.to_string())?;
         println!("{res}");
     }
 

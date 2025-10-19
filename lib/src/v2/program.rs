@@ -6,7 +6,7 @@ use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use super::source::Source;
 use crate::ir::Instr;
-use crate::symbol::{Symbol, SymTable};
+use crate::symbol::{SymTable, Symbol};
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 use rust_decimal::Decimal;
@@ -37,19 +37,6 @@ pub struct Program<State> {
     state: State,
 }
 
-/// Initial state - program just created from source or file path
-#[derive(Debug)]
-pub struct Initial {
-    origin: ProgramOrigin,
-}
-
-/// Parsed state - source has been parsed to AST
-#[derive(Debug)]
-pub struct Parsed {
-    source: Source,
-    ast: Expr,
-}
-
 /// Compiled state - AST compiled to bytecode with symbol metadata
 #[derive(Debug)]
 pub struct Compiled {
@@ -67,62 +54,50 @@ pub struct Linked {
 }
 
 // ============================================================================
-// Program<Initial> - Entry point
+// Program - Public constructors (return Compiled state directly)
 // ============================================================================
 
-impl Program<Initial> {
-    /// Creates a new program from source code.
-    pub fn new_from_source(source: Source) -> Self {
-        Program {
-            state: Initial {
-                origin: ProgramOrigin::Source(source),
-            },
-        }
-    }
-
-    /// Creates a new program from a file path (to be loaded later).
-    pub fn new_from_file(path: String) -> Self {
-        Program {
-            state: Initial {
-                origin: ProgramOrigin::File(path),
-            },
-        }
-    }
-
-    /// Parses source code into an AST.
+impl Program<Compiled> {
+    /// Creates a compiled program from source code.
     ///
-    /// Only valid for programs created from source.
-    pub fn parse(self) -> Result<Program<Parsed>, ProgramError> {
-        match self.state.origin {
-            ProgramOrigin::Source(source) => {
-                let mut parser = Parser::new(&source);
-                let ast = parser
-                    .parse()
-                    .map_err(ProgramError::ParseError)?
-                    .ok_or_else(|| {
-                        ProgramError::ParseError(super::error::ParseError::UnexpectedEof {
-                            span: crate::span::Span::new(0, 0),
-                        })
-                    })?;
-
-                Ok(Program {
-                    state: Parsed { source, ast },
-                })
-            }
-            ProgramOrigin::File(_) => Err(ProgramError::ParseError(
-                super::error::ParseError::UnexpectedToken {
-                    message: "Cannot parse a file-based program. Use deserialize instead."
-                        .to_string(),
+    /// Parses and compiles the source in one step.
+    pub fn new_from_source(source: Source) -> Result<Self, ProgramError> {
+        // Parse
+        let mut parser = Parser::new(&source);
+        let ast = parser
+            .parse()
+            .map_err(ProgramError::ParseError)?
+            .ok_or_else(|| {
+                ProgramError::ParseError(super::error::ParseError::UnexpectedEof {
                     span: crate::span::Span::new(0, 0),
-                },
-            )),
-        }
+                })
+            })?;
+
+        // Compile
+        let (bytecode, symbols) = Self::generate_bytecode(&ast);
+
+        Ok(Program {
+            state: Compiled {
+                origin: ProgramOrigin::Source(source),
+                bytecode,
+                symbols,
+            },
+        })
     }
 
-    /// Deserializes a program from binary data (for file-based programs).
+    /// Creates a compiled program from a binary file.
     ///
-    /// Returns a `Program<Compiled>` state directly.
-    pub fn deserialize(self, data: &[u8]) -> Result<Program<Compiled>, ProgramError> {
+    /// Reads and deserializes the bytecode from the file.
+    pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
+        let path_str = path.into();
+        let data = std::fs::read(&path_str)?;
+        Self::new_from_bytecode(&data)
+    }
+
+    /// Creates a compiled program from bytecode bytes.
+    ///
+    /// Deserializes the bytecode and validates the version.
+    pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
         let config = bincode::config::standard();
         let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
 
@@ -136,39 +111,14 @@ impl Program<Initial> {
 
         Ok(Program {
             state: Compiled {
-                origin: self.state.origin,
+                origin: ProgramOrigin::Source(Source::new("")), // Unknown origin for bytecode
                 bytecode: binary.bytecode,
                 symbols: binary.symbols,
             },
         })
     }
-}
 
-// ============================================================================
-// Program<Parsed> - After parsing
-// ============================================================================
-
-impl Program<Parsed> {
-    /// Compiles the AST to bytecode with symbol metadata.
-    ///
-    /// Does everything in a single AST traversal: generates bytecode and collects
-    /// symbol metadata simultaneously.
-    pub fn compile(self) -> Program<Compiled> {
-        let ast = self.state.ast;
-
-        // Generate bytecode and collect symbols in one pass
-        let (bytecode, symbols) = Self::generate_bytecode(&ast);
-
-        Program {
-            state: Compiled {
-                origin: ProgramOrigin::Source(self.state.source),
-                bytecode,
-                symbols,
-            },
-        }
-    }
-
-    /// Generates bytecode and collects symbol metadata in a single AST traversal.
+    /// Generates bytecode and collects symbol metadata in a single AST traversal (private).
     fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
         let mut bytecode = Vec::new();
         let mut symbols = Vec::new();
@@ -176,11 +126,7 @@ impl Program<Parsed> {
         (bytecode, symbols)
     }
 
-    fn emit_instr(
-        expr: &Expr,
-        bytecode: &mut Vec<Instr>,
-        symbols: &mut Vec<SymbolMetadata>,
-    ) {
+    fn emit_instr(expr: &Expr, bytecode: &mut Vec<Instr>, symbols: &mut Vec<SymbolMetadata>) {
         match &expr.kind {
             ExprKind::Literal(v) => {
                 bytecode.push(Instr::Push(*v));
@@ -254,22 +200,17 @@ impl Program<Parsed> {
         });
         symbols.len() - 1
     }
-}
 
-// ============================================================================
-// Program<Compiled> - After compilation or deserialization
-// ============================================================================
-
-impl Program<Compiled> {
     /// Links the bytecode with a symbol table, validating and remapping indices.
     pub fn link(mut self, table: SymTable) -> Result<Program<Linked>, ProgramError> {
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
-            let (resolved_idx, symbol) = table
-                .get_with_index(&metadata.name)
-                .ok_or_else(|| LinkError::MissingSymbol {
-                    name: metadata.name.to_string(),
-                })?;
+            let (resolved_idx, symbol) =
+                table
+                    .get_with_index(&metadata.name)
+                    .ok_or_else(|| LinkError::MissingSymbol {
+                        name: metadata.name.to_string(),
+                    })?;
 
             // Validate kind matches
             Self::validate_symbol_kind(metadata, symbol)?;
@@ -305,10 +246,7 @@ impl Program<Compiled> {
     }
 
     /// Validates that a symbol matches the expected kind.
-    fn validate_symbol_kind(
-        metadata: &SymbolMetadata,
-        symbol: &Symbol,
-    ) -> Result<(), LinkError> {
+    fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkError> {
         match (&metadata.kind, symbol) {
             (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
             (
@@ -401,10 +339,10 @@ impl Program<Linked> {
         used_indices
     }
 
-    /// Serializes the program to binary format.
+    /// Converts the program to bytecode bytes.
     ///
     /// This involves reverse-mapping the bytecode indices back to metadata indices.
-    pub fn serialize(&self) -> Result<Vec<u8>, ProgramError> {
+    pub fn to_bytecode(&self) -> Result<Vec<u8>, ProgramError> {
         // Step 1: Find all symbol indices used in bytecode
         let used_indices = Self::collect_used_indices(&self.state.bytecode);
 
@@ -444,9 +382,9 @@ impl Program<Linked> {
             .bytecode
             .iter()
             .map(|instr| match instr {
-                Instr::Load(idx) => Instr::Load(
-                    reverse_remap[*idx].expect("Symbol should have been mapped"),
-                ),
+                Instr::Load(idx) => {
+                    Instr::Load(reverse_remap[*idx].expect("Symbol should have been mapped"))
+                }
                 Instr::Call(idx, argc) => Instr::Call(
                     reverse_remap[*idx].expect("Symbol should have been mapped"),
                     *argc,
@@ -464,6 +402,16 @@ impl Program<Linked> {
 
         let config = bincode::config::standard();
         Ok(bincode::serde::encode_to_vec(&binary, config)?)
+    }
+
+    /// Saves the program bytecode to a file.
+    pub fn save_bytecode_to_file(
+        &self,
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<(), ProgramError> {
+        let bytecode = self.to_bytecode()?;
+        std::fs::write(path, bytecode)?;
+        Ok(())
     }
 
     /// Returns a list of all symbols used by this program.

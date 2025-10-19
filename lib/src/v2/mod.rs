@@ -25,5 +25,5 @@ pub use ast::{BinOp, Expr, ExprKind, UnOp};
 pub use error::{LinkError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use parser::Parser;
-pub use program::{Compiled, Initial, Linked, Parsed, Program, ProgramOrigin};
+pub use program::{Compiled, Linked, Program, ProgramOrigin};
 pub use source::Source;

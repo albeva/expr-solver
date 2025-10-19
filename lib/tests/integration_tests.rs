@@ -5,15 +5,13 @@ use rust_decimal_macros::dec;
 
 // Helper function to evaluate an expression and expect an Ok result.
 fn eval_ok(expr: &str) -> Decimal {
-    let mut eval = Eval::new(expr);
-    eval.run().expect("Evaluation should be successful")
+    Eval::evaluate(expr).expect("Evaluation should be successful")
 }
 
 // Helper function to evaluate an expression and expect an Err result.
 fn eval_err(expr: &str) -> String {
     colored::control::set_override(false);
-    let mut eval = Eval::new(expr);
-    eval.run().expect_err("Evaluation should fail")
+    Eval::evaluate(expr).expect_err("Evaluation should fail")
 }
 
 // Helper function to evaluate an expression with a custom symbol table and expect an Ok result.

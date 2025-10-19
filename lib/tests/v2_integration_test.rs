@@ -1,16 +1,14 @@
 //! Integration tests for v2 implementation
 
-use expr_solver::v2::{Program, Source};
 use expr_solver::SymTable;
+use expr_solver::v2::{Program, Source};
 use rust_decimal_macros::dec;
 
 #[test]
 fn test_v2_basic_arithmetic() {
     let source = Source::new("2 + 3 * 4");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -22,9 +20,7 @@ fn test_v2_basic_arithmetic() {
 fn test_v2_with_constants() {
     let source = Source::new("pi * 2");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -37,9 +33,7 @@ fn test_v2_with_constants() {
 fn test_v2_with_functions() {
     let source = Source::new("sqrt(16) + sin(0)");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -50,10 +44,7 @@ fn test_v2_with_functions() {
 #[test]
 fn test_v2_symtable_mutation() {
     let source = Source::new("x + y");
-    let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile();
+    let program = Program::new_from_source(source).expect("compilation failed");
 
     // Create symbol table with x and y
     let mut table = SymTable::new();
@@ -78,9 +69,7 @@ fn test_v2_symtable_mutation() {
 fn test_v2_serialization() {
     let source = Source::new("sqrt(pi) + 2");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -88,11 +77,10 @@ fn test_v2_serialization() {
     let result1 = program.execute().expect("execution failed");
 
     // Serialize
-    let bytes = program.serialize().expect("serialization failed");
+    let bytes = program.to_bytecode().expect("serialization failed");
 
     // Deserialize
-    let program2 = Program::new_from_file("test.bin".to_string())
-        .deserialize(&bytes)
+    let program2 = Program::new_from_bytecode(&bytes)
         .expect("deserialization failed")
         .link(SymTable::stdlib())
         .expect("link failed");
@@ -107,9 +95,7 @@ fn test_v2_serialization() {
 fn test_v2_get_assembly() {
     let source = Source::new("2 + 3");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -122,9 +108,7 @@ fn test_v2_get_assembly() {
 fn test_v2_emit_symbols() {
     let source = Source::new("sin(pi) + sqrt(e)");
     let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile()
+        .expect("compilation failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -138,10 +122,7 @@ fn test_v2_emit_symbols() {
 #[test]
 fn test_v2_link_validation() {
     let source = Source::new("x + y");
-    let program = Program::new_from_source(source)
-        .parse()
-        .expect("parse failed")
-        .compile();
+    let program = Program::new_from_source(source).expect("compilation failed");
 
     // Try to link with empty symbol table (should fail)
     let empty_table = SymTable::new();
