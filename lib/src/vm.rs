@@ -58,13 +58,29 @@ impl Vm {
     /// - Function errors
     /// - Invalid symbol indices
     pub fn run(&self, prog: &Program, table: &SymTable) -> Result<Decimal, VmError> {
-        if prog.code.is_empty() {
+        self.run_bytecode(&prog.code, table)
+    }
+
+    /// Executes bytecode directly and returns the result.
+    ///
+    /// This is used by the v2 implementation which works with bytecode slices.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VmError`] if execution fails due to:
+    /// - Stack underflow
+    /// - Division by zero
+    /// - Invalid operations (e.g., factorial of non-integer)
+    /// - Function errors
+    /// - Invalid symbol indices
+    pub fn run_bytecode(&self, bytecode: &[Instr], table: &SymTable) -> Result<Decimal, VmError> {
+        if bytecode.is_empty() {
             return Ok(Decimal::ZERO);
         }
 
         let mut stack: Vec<Decimal> = Vec::new();
 
-        for op in &prog.code {
+        for op in bytecode {
             self.execute_instruction(op, table, &mut stack)?;
         }
 

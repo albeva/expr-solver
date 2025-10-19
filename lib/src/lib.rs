@@ -25,6 +25,9 @@ mod symbol;
 mod token;
 mod vm;
 
+// V2 implementation with improved architecture
+pub mod v2;
+
 use std::{borrow::Cow, fmt, fs, path::PathBuf};
 
 // Public API
