@@ -19,8 +19,14 @@ mod symbol;
 mod token;
 mod vm;
 
-// V2 implementation
-pub mod v2;
+// Expression solver implementation
+mod ast;
+mod error;
+mod lexer;
+mod metadata;
+mod parser;
+mod program;
+mod source;
 
 use std::{fmt, path::PathBuf};
 
@@ -28,8 +34,13 @@ use crate::span::SpanError;
 use rust_decimal::Decimal;
 
 // Public API
+pub use ast::{BinOp, Expr, ExprKind, UnOp};
+pub use error::{LinkError, ParseError, ProgramError};
+pub use metadata::{SymbolKind, SymbolMetadata};
+pub use parser::Parser;
+pub use program::{Compiled, Linked, Program, ProgramOrigin};
+pub use source::Source;
 pub use symbol::{SymTable, Symbol, SymbolError};
-pub use v2::Source;
 pub use vm::{Vm, VmError};
 
 /// A wrapper that formats errors with source code highlighting
@@ -115,7 +126,7 @@ impl Eval {
     /// let program = Eval::new("sin(pi/2)").unwrap();
     /// let result = program.execute().unwrap();
     /// ```
-    pub fn new(expression: &str) -> Result<v2::Program<v2::Linked>, String> {
+    pub fn new(expression: &str) -> Result<Program<Linked>, String> {
         Self::with_table(expression, SymTable::stdlib())
     }
 
@@ -136,17 +147,14 @@ impl Eval {
     /// let result = program.execute().unwrap();
     /// assert_eq!(result, dec!(84));
     /// ```
-    pub fn with_table(
-        expression: &str,
-        table: SymTable,
-    ) -> Result<v2::Program<v2::Linked>, String> {
+    pub fn with_table(expression: &str, table: SymTable) -> Result<Program<Linked>, String> {
         let source = Source::new(expression);
 
         // Parse and compile
-        let program = v2::Program::new_from_source(source.clone()).map_err(|err| {
+        let program = Program::new_from_source(source.clone()).map_err(|err| {
             // Extract ParseError from ProgramError for nice formatting
             match err {
-                v2::ProgramError::ParseError(parse_err) => {
+                ProgramError::ParseError(parse_err) => {
                     FormattedError::from((&parse_err, &source)).to_string()
                 }
                 other => other.to_string(),
@@ -171,9 +179,8 @@ impl Eval {
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// let result = linked.execute().unwrap();
     /// ```
-    pub fn new_from_file(path: PathBuf) -> Result<v2::Program<v2::Compiled>, String> {
-        v2::Program::new_from_file(path.to_string_lossy().to_string())
-            .map_err(|err| err.to_string())
+    pub fn new_from_file(path: PathBuf) -> Result<Program<Compiled>, String> {
+        Program::new_from_file(path.to_string_lossy().to_string()).map_err(|err| err.to_string())
     }
 
     /// Creates a linked program from a binary file with a custom symbol table.
@@ -192,10 +199,7 @@ impl Eval {
     /// ).unwrap();
     /// let result = program.execute().unwrap();
     /// ```
-    pub fn from_file_with_table(
-        path: PathBuf,
-        table: SymTable,
-    ) -> Result<v2::Program<v2::Linked>, String> {
+    pub fn from_file_with_table(path: PathBuf, table: SymTable) -> Result<Program<Linked>, String> {
         let program = Self::new_from_file(path)?;
         program.link(table).map_err(|err| err.to_string())
     }

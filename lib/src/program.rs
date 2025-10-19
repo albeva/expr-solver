@@ -48,6 +48,7 @@ pub struct Compiled {
 /// Linked state - bytecode linked with symbol table, ready to execute
 #[derive(Debug)]
 pub struct Linked {
+    #[allow(dead_code)]
     origin: ProgramOrigin,
     version: String,
     bytecode: Vec<Instr>,
