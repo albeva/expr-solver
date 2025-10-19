@@ -105,21 +105,6 @@ fn test_v2_get_assembly() {
 }
 
 #[test]
-fn test_v2_emit_symbols() {
-    let source = Source::new("sin(pi) + sqrt(e)");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
-        .expect("link failed");
-
-    let symbols = program.emit_symbols();
-    assert!(symbols.contains(&"sin".to_string()));
-    assert!(symbols.contains(&"sqrt".to_string()));
-    assert!(symbols.contains(&"pi".to_string()));
-    assert!(symbols.contains(&"e".to_string()));
-}
-
-#[test]
 fn test_v2_link_validation() {
     let source = Source::new("x + y");
     let program = Program::new_from_source(source).expect("compilation failed");

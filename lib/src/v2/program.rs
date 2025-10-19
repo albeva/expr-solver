@@ -11,7 +11,6 @@ use crate::vm::{Vm, VmError};
 use colored::Colorize;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -41,6 +40,7 @@ pub struct Program<State> {
 #[derive(Debug)]
 pub struct Compiled {
     origin: ProgramOrigin,
+    version: String,
     bytecode: Vec<Instr>,
     symbols: Vec<SymbolMetadata>,
 }
@@ -49,6 +49,7 @@ pub struct Compiled {
 #[derive(Debug)]
 pub struct Linked {
     origin: ProgramOrigin,
+    version: String,
     bytecode: Vec<Instr>,
     symtable: SymTable,
 }
@@ -79,6 +80,7 @@ impl Program<Compiled> {
         Ok(Program {
             state: Compiled {
                 origin: ProgramOrigin::Source(source),
+                version: PROGRAM_VERSION.to_string(),
                 bytecode,
                 symbols,
             },
@@ -112,6 +114,7 @@ impl Program<Compiled> {
         Ok(Program {
             state: Compiled {
                 origin: ProgramOrigin::Source(Source::new("")), // Unknown origin for bytecode
+                version: binary.version,
                 bytecode: binary.bytecode,
                 symbols: binary.symbols,
             },
@@ -239,6 +242,7 @@ impl Program<Compiled> {
         Ok(Program {
             state: Linked {
                 origin: self.state.origin,
+                version: self.state.version,
                 bytecode: self.state.bytecode,
                 symtable: table,
             },
@@ -298,6 +302,11 @@ impl Program<Compiled> {
     pub fn symbols(&self) -> &[SymbolMetadata] {
         &self.state.symbols
     }
+
+    /// Returns the version of this program.
+    pub fn version(&self) -> &str {
+        &self.state.version
+    }
 }
 
 // ============================================================================
@@ -320,82 +329,66 @@ impl Program<Linked> {
         &mut self.state.symtable
     }
 
-    /// Returns a human-readable assembly representation of the program.
-    pub fn get_assembly(&self) -> String {
-        Self::format_assembly(&self.state.bytecode, &self.state.symtable)
+    /// Returns the version of this program.
+    pub fn version(&self) -> &str {
+        &self.state.version
     }
 
-    /// Collects all symbol indices used in bytecode.
-    fn collect_used_indices(bytecode: &[Instr]) -> BTreeSet<usize> {
-        let mut used_indices = BTreeSet::new();
-        for instr in bytecode {
-            match instr {
-                Instr::Load(idx) | Instr::Call(idx, _) => {
-                    used_indices.insert(*idx);
-                }
-                _ => {}
-            }
-        }
-        used_indices
+    /// Returns a human-readable assembly representation of the program.
+    pub fn get_assembly(&self) -> String {
+        Self::format_assembly(
+            &self.state.version,
+            &self.state.bytecode,
+            &self.state.symtable,
+        )
     }
 
     /// Converts the program to bytecode bytes.
     ///
     /// This involves reverse-mapping the bytecode indices back to metadata indices.
     pub fn to_bytecode(&self) -> Result<Vec<u8>, ProgramError> {
-        // Step 1: Find all symbol indices used in bytecode
-        let used_indices = Self::collect_used_indices(&self.state.bytecode);
+        use std::collections::HashMap;
 
-        // Step 2: Build reverse mapping: symtable_idx → metadata_idx
-        // We use Vec since we need index-based lookup
-        let max_idx = used_indices.iter().max().copied().unwrap_or(0);
-        let mut reverse_remap = vec![None; max_idx + 1];
-        let mut symbols = Vec::with_capacity(used_indices.len());
+        let mut reverse_map = HashMap::new();
+        let mut symbols = Vec::new();
+        let mut bytecode = Vec::with_capacity(self.state.bytecode.len());
 
-        for (metadata_idx, &symtable_idx) in used_indices.iter().enumerate() {
-            let symbol = self
-                .state
-                .symtable
-                .get_by_index(symtable_idx)
-                .ok_or(ProgramError::InvalidSymbolIndex(symtable_idx))?;
+        // Single pass: build symbol mapping and rewrite bytecode
+        for instr in &self.state.bytecode {
+            let new_instr = match instr {
+                Instr::Load(idx) | Instr::Call(idx, _) => {
+                    // Get or create metadata index
+                    let metadata_idx = if let Some(&existing) = reverse_map.get(idx) {
+                        existing
+                    } else {
+                        let symbol = self
+                            .state
+                            .symtable
+                            .get_by_index(*idx)
+                            .ok_or(ProgramError::InvalidSymbolIndex(*idx))?;
 
-            let kind = match symbol {
-                Symbol::Const { .. } => SymbolKind::Const,
-                Symbol::Func { args, variadic, .. } => SymbolKind::Func {
-                    arity: *args,
-                    variadic: *variadic,
-                },
+                        let new_idx = symbols.len();
+                        symbols.push(symbol.into());
+                        reverse_map.insert(*idx, new_idx);
+                        new_idx
+                    };
+
+                    // Build the new instruction
+                    match instr {
+                        Instr::Load(_) => Instr::Load(metadata_idx),
+                        Instr::Call(_, argc) => Instr::Call(metadata_idx, *argc),
+                        _ => unreachable!(),
+                    }
+                }
+                other => other.clone(),
             };
 
-            symbols.push(SymbolMetadata {
-                name: symbol.name().to_string().into(),
-                kind,
-                index: None,
-            });
-
-            reverse_remap[symtable_idx] = Some(metadata_idx);
+            bytecode.push(new_instr);
         }
 
-        // Step 3: Rewrite bytecode to use metadata indices
-        let bytecode: Vec<Instr> = self
-            .state
-            .bytecode
-            .iter()
-            .map(|instr| match instr {
-                Instr::Load(idx) => {
-                    Instr::Load(reverse_remap[*idx].expect("Symbol should have been mapped"))
-                }
-                Instr::Call(idx, argc) => Instr::Call(
-                    reverse_remap[*idx].expect("Symbol should have been mapped"),
-                    *argc,
-                ),
-                other => other.clone(),
-            })
-            .collect();
-
-        // Step 4: Serialize
+        // Serialize
         let binary = BinaryFormat {
-            version: PROGRAM_VERSION.to_string(),
+            version: self.state.version.clone(),
             bytecode,
             symbols,
         };
@@ -414,27 +407,12 @@ impl Program<Linked> {
         Ok(())
     }
 
-    /// Returns a list of all symbols used by this program.
-    pub fn emit_symbols(&self) -> Vec<String> {
-        let used_indices = Self::collect_used_indices(&self.state.bytecode);
-
-        used_indices
-            .iter()
-            .filter_map(|idx| {
-                self.state
-                    .symtable
-                    .get_by_index(*idx)
-                    .map(|s| s.name().to_string())
-            })
-            .collect()
-    }
-
     /// Formats bytecode as human-readable assembly.
-    fn format_assembly(bytecode: &[Instr], table: &SymTable) -> String {
+    fn format_assembly(version: &str, bytecode: &[Instr], table: &SymTable) -> String {
         use std::fmt::Write as _;
 
         let mut out = String::new();
-        out += &format!("; VERSION {}\n", PROGRAM_VERSION)
+        out += &format!("; VERSION {}\n", version)
             .bright_black()
             .to_string();
 

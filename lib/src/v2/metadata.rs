@@ -1,5 +1,6 @@
 //! Symbol metadata for bytecode validation and linking.
 
+use crate::symbol::Symbol;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -30,4 +31,26 @@ pub enum SymbolKind {
         /// Whether the function accepts additional arguments
         variadic: bool,
     },
+}
+
+impl From<&Symbol> for SymbolKind {
+    fn from(symbol: &Symbol) -> Self {
+        match symbol {
+            Symbol::Const { .. } => SymbolKind::Const,
+            Symbol::Func { args, variadic, .. } => SymbolKind::Func {
+                arity: *args,
+                variadic: *variadic,
+            },
+        }
+    }
+}
+
+impl From<&Symbol> for SymbolMetadata {
+    fn from(symbol: &Symbol) -> Self {
+        SymbolMetadata {
+            name: symbol.name().to_string().into(),
+            kind: symbol.into(),
+            index: None,
+        }
+    }
 }
