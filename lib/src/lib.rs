@@ -12,35 +12,24 @@
 //! - 128-bit decimal arithmetic (no floating-point representation errors!)
 //! - Error handling with source location information
 
-mod ast;
+// Core types (shared)
 mod ir;
-mod lexer;
-mod parser;
-mod program;
-
-mod sema;
-mod source;
 mod span;
 mod symbol;
 mod token;
 mod vm;
 
-// V2 implementation with improved architecture
+// V2 implementation
 pub mod v2;
 
-use std::{borrow::Cow, fmt, fs, path::PathBuf};
+use std::{fmt, fs, path::PathBuf};
 
-// Public API
-pub use ir::IrBuilder;
-pub use parser::Parser;
-pub use program::Program;
-
-use crate::ast::Expr;
 use crate::span::SpanError;
 use rust_decimal::Decimal;
-pub use sema::Sema;
-pub use source::Source;
+
+// Public API
 pub use symbol::{SymTable, Symbol, SymbolError};
+pub use v2::Source;
 pub use vm::{Vm, VmError};
 
 /// A wrapper that formats errors with source code highlighting
@@ -54,8 +43,8 @@ impl fmt::Display for FormattedError {
     }
 }
 
-impl<T: SpanError> From<(&T, &Source<'_>)> for FormattedError {
-    fn from((error, source): (&T, &Source<'_>)) -> Self {
+impl<T: SpanError> From<(&T, &Source)> for FormattedError {
+    fn from((error, source): (&T, &Source)) -> Self {
         Self {
             message: format!("{}\n{}", error, source.highlight(&error.span())),
         }
@@ -63,8 +52,8 @@ impl<T: SpanError> From<(&T, &Source<'_>)> for FormattedError {
 }
 
 #[derive(Debug)]
-enum EvalSource<'str> {
-    Source(Cow<'str, Source<'str>>),
+enum EvalSource {
+    Source(Source),
     File(PathBuf),
 }
 
@@ -87,12 +76,12 @@ enum EvalSource<'str> {
 /// let result = eval.run().unwrap();
 /// ```
 #[derive(Debug)]
-pub struct Eval<'str> {
-    source: EvalSource<'str>,
+pub struct Eval {
+    source: EvalSource,
     table: SymTable,
 }
 
-impl<'str> Eval<'str> {
+impl Eval {
     /// Quick evaluation of an expression with the standard library.
     ///
     /// This is a convenience method for one-off evaluations.
@@ -105,7 +94,7 @@ impl<'str> Eval<'str> {
     /// let result = Eval::evaluate("2^8").unwrap();
     /// assert_eq!(result.to_string(), "256");
     /// ```
-    pub fn evaluate(expression: &'str str) -> Result<Decimal, String> {
+    pub fn evaluate(expression: &str) -> Result<Decimal, String> {
         Self::new(expression).run()
     }
 
@@ -123,7 +112,7 @@ impl<'str> Eval<'str> {
     /// let result = Eval::evaluate_with_table("x * 2", table).unwrap();
     /// assert_eq!(result, dec!(84));
     /// ```
-    pub fn evaluate_with_table(expression: &'str str, table: SymTable) -> Result<Decimal, String> {
+    pub fn evaluate_with_table(expression: &str, table: SymTable) -> Result<Decimal, String> {
         Self::with_table(expression, table).run()
     }
 
@@ -137,7 +126,7 @@ impl<'str> Eval<'str> {
     /// let mut eval = Eval::new("sin(pi/2)");
     /// let result = eval.run().unwrap();
     /// ```
-    pub fn new(string: &'str str) -> Self {
+    pub fn new(string: &str) -> Self {
         Self::with_table(string, SymTable::stdlib())
     }
 
@@ -156,23 +145,10 @@ impl<'str> Eval<'str> {
     /// let result = eval.run().unwrap();
     /// assert_eq!(result, dec!(84));
     /// ```
-    pub fn with_table(string: &'str str, table: SymTable) -> Self {
+    pub fn with_table(string: &str, table: SymTable) -> Self {
         let source = Source::new(string);
         Self {
-            source: EvalSource::Source(Cow::Owned(source)),
-            table,
-        }
-    }
-
-    /// Creates a new evaluator from a [`Source`] reference.
-    pub fn new_from_source(source: &'str Source<'str>) -> Self {
-        Self::from_source_with_table(source, SymTable::stdlib())
-    }
-
-    /// Creates a new evaluator from a [`Source`] reference with a custom symbol table.
-    pub fn from_source_with_table(source: &'str Source<'str>, table: SymTable) -> Self {
-        Self {
-            source: EvalSource::Source(Cow::Borrowed(source)),
+            source: EvalSource::Source(source),
             table,
         }
     }
@@ -204,9 +180,7 @@ impl<'str> Eval<'str> {
     /// ```
     pub fn run(&mut self) -> Result<Decimal, String> {
         let program = self.build_program()?;
-        Vm::default()
-            .run(&program, &self.table)
-            .map_err(|err| err.to_string())
+        program.execute().map_err(|err| err.to_string())
     }
 
     /// Compiles the expression to a binary file.
@@ -224,7 +198,7 @@ impl<'str> Eval<'str> {
     /// ```
     pub fn compile_to_file(&mut self, path: &PathBuf) -> Result<(), String> {
         let program = self.build_program()?;
-        let binary_data = program.compile().map_err(|err| err.to_string())?;
+        let binary_data = program.serialize().map_err(|err| err.to_string())?;
         fs::write(path, binary_data).map_err(|err| err.to_string())
     }
 
@@ -242,28 +216,44 @@ impl<'str> Eval<'str> {
     /// ```
     pub fn get_assembly(&mut self) -> Result<String, String> {
         let program = self.build_program()?;
-        Ok(program.get_assembly(&self.table))
+        Ok(program.get_assembly())
     }
 
-    fn build_program(&mut self) -> Result<Program, String> {
+    fn build_program(&mut self) -> Result<v2::Program<v2::Linked>, String> {
         match &self.source {
             EvalSource::Source(source) => {
-                let mut parser = Parser::new(source);
-                let mut ast: Expr = match parser
+                // Parse
+                let program = v2::Program::new_from_source(source.clone())
                     .parse()
-                    .map_err(|err| FormattedError::from((&err, source.as_ref())).to_string())?
-                {
-                    Some(ast) => ast,
-                    None => return Ok(Program::default()),
-                };
-                Sema::new(&self.table)
-                    .visit(&mut ast)
-                    .map_err(|err| FormattedError::from((&err, source.as_ref())).to_string())?;
-                IrBuilder::new().build(&ast).map_err(|err| err.to_string())
+                    .map_err(|err| {
+                        // Extract ParseError from ProgramError for formatting
+                        match err {
+                            v2::ProgramError::ParseError(parse_err) => {
+                                FormattedError::from((&parse_err, source)).to_string()
+                            }
+                            other => other.to_string(),
+                        }
+                    })?;
+
+                // Compile (infallible)
+                let program = program.compile();
+
+                // Link
+                let program = program
+                    .link(self.table.clone())
+                    .map_err(|err| err.to_string())?;
+
+                Ok(program)
             }
             EvalSource::File(path) => {
                 let binary_data = fs::read(path).map_err(|err| err.to_string())?;
-                Program::load(&binary_data).map_err(|err| err.to_string())
+                let program = v2::Program::new_from_file(path.to_string_lossy().to_string())
+                    .deserialize(&binary_data)
+                    .map_err(|err| err.to_string())?;
+                let program = program
+                    .link(self.table.clone())
+                    .map_err(|err| err.to_string())?;
+                Ok(program)
             }
         }
     }

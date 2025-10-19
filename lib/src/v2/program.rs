@@ -312,20 +312,34 @@ impl Program<Compiled> {
         match (&metadata.kind, symbol) {
             (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
             (
-                SymbolKind::Func { arity, variadic },
+                SymbolKind::Func { arity, .. },
                 Symbol::Func {
-                    args,
-                    variadic: v,
+                    args: min_args,
+                    variadic,
                     ..
                 },
             ) => {
-                if arity == args && variadic == v {
+                // Check if the call is valid:
+                // - For non-variadic: arity must match exactly
+                // - For variadic: arity must be >= min_args
+                let valid = if *variadic {
+                    arity >= min_args
+                } else {
+                    arity == min_args
+                };
+
+                if valid {
                     Ok(())
                 } else {
+                    let expected_msg = if *variadic {
+                        format!("at least {} arguments", min_args)
+                    } else {
+                        format!("exactly {} arguments", min_args)
+                    };
                     Err(LinkError::TypeMismatch {
                         name: metadata.name.to_string(),
-                        expected: format!("function(arity={}, variadic={})", arity, variadic),
-                        found: format!("function(arity={}, variadic={})", args, v),
+                        expected: expected_msg,
+                        found: format!("{} arguments provided", arity),
                     })
                 }
             }

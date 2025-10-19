@@ -22,7 +22,7 @@ mod source;
 
 // Public API exports
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
-pub use error::{LinkError, ParseError};
+pub use error::{LinkError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use parser::Parser;
 pub use program::{Compiled, Initial, Linked, Parsed, Program, ProgramOrigin};

@@ -128,47 +128,47 @@ fn test_custom_symbols() {
 #[rustfmt::skip]
 fn test_syntax_errors() {
     assert_eq!(eval_err("1 + * 2"), indoc! {r#"
-        Unexpected token '*', expected 'an expression'
+        Unexpected token: unexpected token '*', expected an expression
         1 | 1 + * 2
           |     ^"#
     });
     assert_eq!(eval_err("(1 + 2"), indoc! {r#"
-        Unexpected token 'EOF', expected ')'
+        Unexpected token: unexpected token 'EOF', expected ')'
         1 | (1 + 2
           |       ^"#
     });
     assert_eq!(eval_err("1 2"), indoc! {r#"
-        Unexpected token '2', expected 'EOF'
+        Unexpected token: unexpected token '2', expected 'EOF'
         1 | 1 2
           |   ^"#
     });
     assert_eq!(eval_err("()"), indoc! {r#"
-        Unexpected token ')', expected 'an expression'
+        Unexpected token: unexpected token ')', expected an expression
         1 | ()
           |  ^"#
     });
     assert_eq!(eval_err("sin("), indoc! {r#"
-        Unexpected token 'EOF', expected 'an expression'
+        Unexpected token: unexpected token 'EOF', expected an expression
         1 | sin(
           |     ^"#
     });
     assert_eq!(eval_err("1 + "), indoc! {r#"
-        Unexpected token 'EOF', expected 'an expression'
+        Unexpected token: unexpected token 'EOF', expected an expression
         1 | 1 +
           |    ^"#
     });
     assert_eq!(eval_err("* 2"), indoc! {r#"
-        Unexpected token '*', expected 'an expression'
+        Unexpected token: unexpected token '*', expected an expression
         1 | * 2
           | ^"#
     });
     assert_eq!(eval_err("1 (2 + 3)"), indoc! {r#"
-        Unexpected token '(', expected 'EOF'
+        Unexpected token: unexpected token '(', expected 'EOF'
         1 | 1 (2 + 3)
           |   ^"#
     });
     assert_eq!(eval_err("sin 1"), indoc! {r#"
-        Unexpected token '1', expected 'EOF'
+        Unexpected token: unexpected token '1', expected 'EOF'
         1 | sin 1
           |     ^"#
     });
@@ -177,51 +177,16 @@ fn test_syntax_errors() {
 #[test]
 #[rustfmt::skip]
 fn test_semantic_errors() {
-    assert_eq!(eval_err("foo()"), indoc! {r#"
-        Undefined symbol 'foo'
-        1 | foo()
-          | ^~~"#
-    });
-    assert_eq!(eval_err("🙈🍅🎉🌴🎶()"), indoc! {r#"
-        Undefined symbol '🙈🍅🎉🌴🎶'
-        1 | 🙈🍅🎉🌴🎶()
-          | ^~~~~~~~~~"#
-    });
-    assert_eq!(eval_err("bar"), indoc! {r#"
-        Undefined symbol 'bar'
-        1 | bar
-          | ^~~"#
-    });
-    assert_eq!(eval_err("sin(1, 2)"), indoc! {r#"
-        Function 'sin' expects exactly 1 arguments but got 2
-        1 | sin(1, 2)
-          | ^~~~~~~~~"#
-    });
-    assert_eq!(eval_err("max()"), indoc! {r#"
-        Function 'max' expects at least 1 arguments but got 0
-        1 | max()
-          | ^~~~~"#
-    });
-    assert_eq!(eval_err("pi()"), indoc! {r#"
-        Symbol 'pi' is not a function
-        1 | pi()
-          | ^~"#
-    });
-    assert_eq!(eval_err("1 + sin"), indoc! {r#"
-        Symbol 'sin' is not a constant
-        1 | 1 + sin
-          |     ^~~"#
-    });
-    assert_eq!(eval_err("avg()"), indoc! {r#"
-        Function 'avg' expects at least 1 arguments but got 0
-        1 | avg()
-          | ^~~~~"#
-    });
-    assert_eq!(eval_err("clamp(1, 2)"), indoc! {r#"
-        Function 'clamp' expects exactly 3 arguments but got 2
-        1 | clamp(1, 2)
-          | ^~~~~~~~~~~"#
-    });
+    // V2 defers validation to link time, so we get link errors instead of semantic errors
+    assert_eq!(eval_err("foo()"), "Link error: Missing symbol: 'foo' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("🙈🍅🎉🌴🎶()"), "Link error: Missing symbol: '🙈🍅🎉🌴🎶' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("bar"), "Link error: Missing symbol: 'bar' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("sin(1, 2)"), "Link error: Type mismatch for symbol 'sin': expected exactly 1 arguments, found 2 arguments provided");
+    assert_eq!(eval_err("max()"), "Link error: Type mismatch for symbol 'max': expected at least 1 arguments, found 0 arguments provided");
+    assert_eq!(eval_err("pi()"), "Link error: Type mismatch for symbol 'pi': expected function, found constant");
+    assert_eq!(eval_err("1 + sin"), "Link error: Type mismatch for symbol 'sin': expected constant, found function");
+    assert_eq!(eval_err("avg()"), "Link error: Type mismatch for symbol 'avg': expected at least 1 arguments, found 0 arguments provided");
+    assert_eq!(eval_err("clamp(1, 2)"), "Link error: Type mismatch for symbol 'clamp': expected exactly 3 arguments, found 2 arguments provided");
 }
 
 #[test]
@@ -278,14 +243,7 @@ fn test_if_function() {
 #[test]
 #[rustfmt::skip]
 fn test_if_function_semantic_errors() {
-    assert_eq!(eval_err("if(1, 2)"), indoc! {r#"
-        Function 'if' expects exactly 3 arguments but got 2
-        1 | if(1, 2)
-          | ^~~~~~~~"#
-    });
-    assert_eq!(eval_err("if(1, 2, 3, 4)"), indoc! {r#"
-        Function 'if' expects exactly 3 arguments but got 4
-        1 | if(1, 2, 3, 4)
-          | ^~~~~~~~~~~~~~"#
-    });
+    // V2 defers validation to link time
+    assert_eq!(eval_err("if(1, 2)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 2 arguments provided");
+    assert_eq!(eval_err("if(1, 2, 3, 4)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 4 arguments provided");
 }

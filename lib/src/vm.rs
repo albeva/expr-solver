@@ -1,5 +1,4 @@
 use crate::ir::Instr;
-use crate::program::Program;
 use crate::symbol::{FuncError, SymTable, Symbol};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
@@ -47,23 +46,7 @@ pub enum VmError {
 pub struct Vm;
 
 impl Vm {
-    /// Executes a program and returns the result.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`VmError`] if execution fails due to:
-    /// - Stack underflow
-    /// - Division by zero
-    /// - Invalid operations (e.g., factorial of non-integer)
-    /// - Function errors
-    /// - Invalid symbol indices
-    pub fn run(&self, prog: &Program, table: &SymTable) -> Result<Decimal, VmError> {
-        self.run_bytecode(&prog.code, table)
-    }
-
     /// Executes bytecode directly and returns the result.
-    ///
-    /// This is used by the v2 implementation which works with bytecode slices.
     ///
     /// # Errors
     ///
@@ -303,21 +286,13 @@ mod tests {
     use super::*;
     use crate::symbol::SymTable;
 
-    fn make(code: Vec<Instr>) -> Program {
-        let mut program = Program::new();
-        program.code = code;
-        program
-    }
-
     #[test]
     fn test_vm_error_stack_underflow() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let program = make(
-            vec![Instr::Add], // No values on stack
-        );
+        let bytecode = vec![Instr::Add]; // No values on stack
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(result, Err(VmError::StackUnderflow)));
     }
 
@@ -325,9 +300,9 @@ mod tests {
     fn test_vm_error_division_by_zero() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let program = make(vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div]);
+        let bytecode = vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div];
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
     }
 
@@ -335,13 +310,13 @@ mod tests {
     fn test_vm_error_invalid_final_stack() {
         let vm = Vm::default();
         let table = SymTable::stdlib();
-        let program = make(vec![
+        let bytecode = vec![
             Instr::Push(dec!(1)),
             Instr::Push(dec!(2)),
             // No operation to combine them
-        ]);
+        ];
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidFinalStack { count: 2 })
@@ -354,11 +329,9 @@ mod tests {
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
-        let program = make(
-            vec![Instr::Load(sin_idx)], // Trying to load a function as constant
-        );
+        let bytecode = vec![Instr::Load(sin_idx)]; // Trying to load a function as constant
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidLoad { symbol_name: _ })
@@ -371,11 +344,9 @@ mod tests {
         let table = SymTable::stdlib();
         let (pi_idx, _) = table.get_with_index("pi").unwrap();
 
-        let program = make(
-            vec![Instr::Call(pi_idx, 0)], // Trying to call a constant as function
-        );
+        let bytecode = vec![Instr::Call(pi_idx, 0)]; // Trying to call a constant as function
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidCall { symbol_name: _ })
@@ -388,11 +359,9 @@ mod tests {
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
-        let program = make(
-            vec![Instr::Call(sin_idx, 0)], // No arguments for sin function
-        );
+        let bytecode = vec![Instr::Call(sin_idx, 0)]; // No arguments for sin function
 
-        let result = vm.run(&program, &table);
+        let result = vm.run_bytecode(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::CallStackUnderflow {
@@ -461,8 +430,7 @@ mod tests {
         ];
 
         for (code, expected) in test_cases {
-            let program = make(code);
-            assert_eq!(vm.run(&program, &table).unwrap(), expected);
+            assert_eq!(vm.run_bytecode(&code, &table).unwrap(), expected);
         }
     }
 }
