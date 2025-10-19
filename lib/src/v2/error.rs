@@ -101,7 +101,7 @@ pub enum ProgramError {
     LinkError(#[from] LinkError),
 
     #[error("Serialization error: {0}")]
-    SerializationError(String),
+    SerializationError(#[from] bincode::error::EncodeError),
 
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] bincode::error::DecodeError),

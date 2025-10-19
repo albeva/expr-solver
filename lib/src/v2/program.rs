@@ -444,8 +444,7 @@ impl Program<Linked> {
         };
 
         let config = bincode::config::standard();
-        bincode::serde::encode_to_vec(&binary, config)
-            .map_err(|e| ProgramError::SerializationError(e.to_string()))
+        Ok(bincode::serde::encode_to_vec(&binary, config)?)
     }
 
     /// Returns a list of all symbols used by this program.
