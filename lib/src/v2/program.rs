@@ -1,7 +1,7 @@
 //! Type-state program implementation with improved architecture.
 
 use super::ast::{BinOp, Expr, ExprKind, UnOp};
-use super::error::{CompileError, LinkError, ProgramError};
+use super::error::{LinkError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use super::source::Source;
@@ -153,53 +153,53 @@ impl Program<Parsed> {
     ///
     /// Does everything in a single AST traversal: generates bytecode and collects
     /// symbol metadata simultaneously.
-    pub fn compile(self) -> Result<Program<Compiled>, ProgramError> {
+    pub fn compile(self) -> Program<Compiled> {
         let ast = self.state.ast;
 
         // Generate bytecode and collect symbols in one pass
-        let (bytecode, symbols) = Self::generate_bytecode(&ast)?;
+        let (bytecode, symbols) = Self::generate_bytecode(&ast);
 
-        Ok(Program {
+        Program {
             state: Compiled {
                 origin: ProgramOrigin::Source(self.state.source),
                 bytecode,
                 symbols,
             },
-        })
+        }
     }
 
     /// Generates bytecode and collects symbol metadata in a single AST traversal.
-    fn generate_bytecode(ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), CompileError> {
+    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
         let mut bytecode = Vec::new();
         let mut symbols = Vec::new();
-        Self::emit_instr(ast, &mut bytecode, &mut symbols)?;
-        Ok((bytecode, symbols))
+        Self::emit_instr(ast, &mut bytecode, &mut symbols);
+        (bytecode, symbols)
     }
 
     fn emit_instr(
         expr: &Expr,
         bytecode: &mut Vec<Instr>,
         symbols: &mut Vec<SymbolMetadata>,
-    ) -> Result<(), CompileError> {
+    ) {
         match &expr.kind {
             ExprKind::Literal(v) => {
                 bytecode.push(Instr::Push(*v));
             }
-            ExprKind::Ident { name, .. } => {
+            ExprKind::Ident { name } => {
                 // Get or create index for this constant
                 let idx = Self::get_or_create_symbol(name, SymbolKind::Const, symbols);
                 bytecode.push(Instr::Load(idx));
             }
             ExprKind::Unary { op, expr } => {
-                Self::emit_instr(expr, bytecode, symbols)?;
+                Self::emit_instr(expr, bytecode, symbols);
                 match op {
                     UnOp::Neg => bytecode.push(Instr::Neg),
                     UnOp::Fact => bytecode.push(Instr::Fact),
                 }
             }
             ExprKind::Binary { op, left, right } => {
-                Self::emit_instr(left, bytecode, symbols)?;
-                Self::emit_instr(right, bytecode, symbols)?;
+                Self::emit_instr(left, bytecode, symbols);
+                Self::emit_instr(right, bytecode, symbols);
                 bytecode.push(match op {
                     BinOp::Add => Instr::Add,
                     BinOp::Sub => Instr::Sub,
@@ -214,10 +214,10 @@ impl Program<Parsed> {
                     BinOp::GreaterEqual => Instr::GreaterEqual,
                 });
             }
-            ExprKind::Call { name, args, .. } => {
+            ExprKind::Call { name, args } => {
                 // Emit arguments first
                 for arg in args {
-                    Self::emit_instr(arg, bytecode, symbols)?;
+                    Self::emit_instr(arg, bytecode, symbols);
                 }
 
                 // Get or create index for this function
@@ -232,7 +232,6 @@ impl Program<Parsed> {
                 bytecode.push(Instr::Call(idx, args.len()));
             }
         }
-        Ok(())
     }
 
     /// Gets existing symbol index or creates a new one.

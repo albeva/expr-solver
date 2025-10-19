@@ -25,52 +25,6 @@ impl SpanError for ParseError {
     }
 }
 
-/// Errors that can occur during compilation.
-#[derive(Error, Debug)]
-pub enum CompileError {
-    #[error("Semantic error: {0}")]
-    SemanticError(#[from] SemanticError),
-    #[error("Code generation error: {0}")]
-    CodeGenError(String),
-}
-
-/// Errors that can occur during semantic analysis.
-#[derive(Error, Debug)]
-pub enum SemanticError {
-    #[error("Undefined symbol: '{name}'")]
-    UndefinedSymbol { name: String, span: Span },
-    #[error("Symbol '{name}' is not a constant")]
-    SymbolIsNotAConstant { name: String, span: Span },
-    #[error("Symbol '{name}' is not a function")]
-    SymbolIsNotAFunction { name: String, span: Span },
-    #[error("Function '{name}' expects {expected} arguments, got {actual}")]
-    ArgumentCountMismatch {
-        name: String,
-        expected: usize,
-        actual: usize,
-        span: Span,
-    },
-    #[error("Function '{name}' expects at least {expected} arguments, got {actual}")]
-    InsufficientArguments {
-        name: String,
-        expected: usize,
-        actual: usize,
-        span: Span,
-    },
-}
-
-impl SpanError for SemanticError {
-    fn span(&self) -> Span {
-        match self {
-            SemanticError::UndefinedSymbol { span, .. } => *span,
-            SemanticError::SymbolIsNotAConstant { span, .. } => *span,
-            SemanticError::SymbolIsNotAFunction { span, .. } => *span,
-            SemanticError::ArgumentCountMismatch { span, .. } => *span,
-            SemanticError::InsufficientArguments { span, .. } => *span,
-        }
-    }
-}
-
 /// Errors that can occur during linking.
 #[derive(Error, Debug)]
 pub enum LinkError {
@@ -93,9 +47,6 @@ pub enum LinkError {
 pub enum ProgramError {
     #[error("Parse error: {0}")]
     ParseError(#[from] ParseError),
-
-    #[error("Compile error: {0}")]
-    CompileError(#[from] CompileError),
 
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),

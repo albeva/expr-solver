@@ -11,7 +11,6 @@ fn test_v2_basic_arithmetic() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -26,7 +25,6 @@ fn test_v2_with_constants() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -42,7 +40,6 @@ fn test_v2_with_functions() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -56,8 +53,7 @@ fn test_v2_symtable_mutation() {
     let program = Program::new_from_source(source)
         .parse()
         .expect("parse failed")
-        .compile()
-        .expect("compile failed");
+        .compile();
 
     // Create symbol table with x and y
     let mut table = SymTable::new();
@@ -85,7 +81,6 @@ fn test_v2_serialization() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -115,7 +110,6 @@ fn test_v2_get_assembly() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -131,7 +125,6 @@ fn test_v2_emit_symbols() {
         .parse()
         .expect("parse failed")
         .compile()
-        .expect("compile failed")
         .link(SymTable::stdlib())
         .expect("link failed");
 
@@ -148,8 +141,7 @@ fn test_v2_link_validation() {
     let program = Program::new_from_source(source)
         .parse()
         .expect("parse failed")
-        .compile()
-        .expect("compile failed");
+        .compile();
 
     // Try to link with empty symbol table (should fail)
     let empty_table = SymTable::new();

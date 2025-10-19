@@ -18,14 +18,12 @@ mod lexer;
 mod metadata;
 mod parser;
 mod program;
-mod sema;
 mod source;
 
 // Public API exports
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
-pub use error::{CompileError, LinkError, ParseError};
+pub use error::{LinkError, ParseError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use parser::Parser;
 pub use program::{Compiled, Initial, Linked, Parsed, Program, ProgramOrigin};
-pub use sema::Sema;
 pub use source::Source;
