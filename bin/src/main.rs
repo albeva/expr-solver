@@ -106,7 +106,7 @@ fn create_symbol_table(defines: &[(String, Number)]) -> Result<SymTable, String>
         }
 
         table
-            .add_const(name.clone(), *value)
+            .add_const(name.clone(), *value, false)
             .map_err(|e| format!("Failed to add constant '{}': {}", name, e))?;
     }
 

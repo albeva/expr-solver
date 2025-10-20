@@ -40,7 +40,7 @@
 //! use expr_solver::{num, eval_with_table, SymTable};
 //!
 //! let mut table = SymTable::stdlib();
-//! table.add_const("x", num!(10)).unwrap();
+//! table.add_const("x", num!(10), false).unwrap();
 //!
 //! let result = eval_with_table("x * 2", table).unwrap();
 //! assert_eq!(result.to_string(), "20");
@@ -58,8 +58,8 @@
 //!
 //! // Link with symbol table (validated at link time)
 //! let mut table = SymTable::new();
-//! table.add_const("x", num!(10)).unwrap();
-//! table.add_const("y", num!(5)).unwrap();
+//! table.add_const("x", num!(10), false).unwrap();
+//! table.add_const("y", num!(5), false).unwrap();
 //!
 //! let linked = program.link(table).unwrap();
 //!
@@ -132,7 +132,7 @@ pub fn eval(expression: &str) -> Result<Number, String> {
 /// use expr_solver::{num, eval_with_table, SymTable};
 ///
 /// let mut table = SymTable::stdlib();
-/// table.add_const("x", num!(42)).unwrap();
+/// table.add_const("x", num!(42), false).unwrap();
 ///
 /// let result = eval_with_table("x * 2", table).unwrap();
 /// assert_eq!(result.to_string(), "84");

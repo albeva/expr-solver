@@ -71,6 +71,7 @@ impl<'src> Parser<'src> {
                 Ok(Expr::ident(id, span))
             }
             Token::If => self.if_expr(span),
+            Token::Let => self.let_expr(span),
             Token::Minus => {
                 self.advance();
                 let expr = self.primary()?;
@@ -171,6 +172,81 @@ impl<'src> Parser<'src> {
 
         let span = span.merge(self.span);
         Ok(Expr::if_expr(cond, then_branch, else_branch, span))
+    }
+
+    fn let_expr(&mut self, span: Span) -> ParseResult<'src> {
+        // Expect: let name = expr, name = expr, ... then body
+
+        // assume lookahead is 'let'
+        self.advance();
+
+        // Parse declarations: name = expr, name = expr, ...
+        let mut decls = Vec::new();
+
+        loop {
+            // Expect identifier
+            let name = match self.lookahead {
+                Token::Ident(id) => id.to_string(),
+                Token::Then => {
+                    // Empty declarations: let then ...
+                    return Err(ParseError::UnexpectedToken {
+                        message: "expected identifier after 'let', found 'then'".to_string(),
+                        span: self.span,
+                    });
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        message: format!(
+                            "expected identifier after 'let', found '{}'",
+                            self.lookahead.lexeme()
+                        ),
+                        span: self.span,
+                    });
+                }
+            };
+            self.advance();
+
+            // Expect '='
+            if self.lookahead != Token::Assign {
+                return Err(ParseError::UnexpectedToken {
+                    message: format!(
+                        "expected '=' after identifier in let declaration, found '{}'",
+                        self.lookahead.lexeme()
+                    ),
+                    span: self.span,
+                });
+            }
+            self.advance();
+
+            // Parse value expression
+            let expr = self.expression()?;
+            decls.push((name, expr));
+
+            // Check for continuation: comma or then
+            if self.lookahead == Token::Comma {
+                self.advance();
+                continue;
+            } else if self.lookahead == Token::Then {
+                break;
+            } else {
+                return Err(ParseError::UnexpectedToken {
+                    message: format!(
+                        "expected ',' or 'then' after let declaration, found '{}'",
+                        self.lookahead.lexeme()
+                    ),
+                    span: self.span,
+                });
+            }
+        }
+
+        // Expect 'then'
+        self.expect(&Token::Then)?;
+
+        // Parse body expression
+        let body = self.expression()?;
+
+        let span = span.merge(self.span);
+        Ok(Expr::let_expr(decls, body, span))
     }
 
     fn advance(&mut self) {

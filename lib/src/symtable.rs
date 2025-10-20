@@ -15,7 +15,7 @@ use std::borrow::Cow;
 /// use expr_solver::{num, SymTable};
 ///
 /// let mut table = SymTable::stdlib();
-/// table.add_const("x", num!(42)).unwrap();
+/// table.add_const("x", num!(42), false).unwrap();
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct SymTable {
@@ -37,10 +37,16 @@ impl SymTable {
     /// Adds a constant to the table.
     ///
     /// Returns an error if a symbol with the same name already exists.
+    ///
+    /// # Parameters
+    /// - `name`: Constant name
+    /// - `value`: Constant value
+    /// - `local`: Whether this is a local constant (from let) or global (from stdlib)
     pub fn add_const<S: Into<Cow<'static, str>>>(
         &mut self,
         name: S,
         value: Number,
+        local: bool,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
         if self.get(&name).is_some() {
@@ -50,6 +56,7 @@ impl SymTable {
             name,
             value,
             description: None,
+            local,
         });
         Ok(self)
     }
@@ -61,6 +68,7 @@ impl SymTable {
     /// - `args`: Minimum number of arguments
     /// - `variadic`: Whether the function accepts additional arguments
     /// - `callback`: Function implementation
+    /// - `local`: Whether this is a local function (reserved for future) or global (from stdlib)
     ///
     /// Returns an error if a symbol with the same name already exists.
     pub fn add_func<S: Into<Cow<'static, str>>>(
@@ -69,6 +77,7 @@ impl SymTable {
         args: usize,
         variadic: bool,
         callback: fn(&[Number]) -> Result<Number, FuncError>,
+        local: bool,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
         if self.get(&name).is_some() {
@@ -80,6 +89,7 @@ impl SymTable {
             variadic,
             callback,
             description: None,
+            local,
         });
         Ok(self)
     }

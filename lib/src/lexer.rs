@@ -114,6 +114,10 @@ impl<'src> Lexer<'src> {
         // Check for keywords (case-insensitive)
         if s.eq_ignore_ascii_case("if") {
             Token::If
+        } else if s.eq_ignore_ascii_case("let") {
+            Token::Let
+        } else if s.eq_ignore_ascii_case("then") {
+            Token::Then
         } else {
             Token::Ident(s)
         }
@@ -165,7 +169,7 @@ impl<'src> Lexer<'src> {
             self.read(); // consume second '='
             Token::Equal
         } else {
-            self.invalid() // single '=' is not valid
+            Token::Assign // single '=' is assignment
         }
     }
 

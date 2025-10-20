@@ -38,6 +38,9 @@ pub enum LinkError {
         found: String,
     },
 
+    #[error("Redefined symbol: '{name}' is already defined (no shadowing allowed)")]
+    RedefinedSymbol { name: String },
+
     #[error("Symbol table error: {0}")]
     SymbolTableError(#[from] crate::symbol::SymbolError),
 }
@@ -50,6 +53,9 @@ pub enum ProgramError {
 
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),
+
+    #[error("VM error: {0}")]
+    VmError(#[from] crate::vm::VmError),
 
     #[cfg(feature = "serialization")]
     #[error("Serialization error: {0}")]

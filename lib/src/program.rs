@@ -7,7 +7,7 @@ use super::parser::Parser;
 use crate::ir::Instr;
 use crate::number::Number;
 use crate::span::{Span, SpanError};
-use crate::symbol::Symbol;
+use crate::symbol::{Symbol, SymbolError};
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
@@ -52,7 +52,7 @@ pub enum ProgramOrigin {
 ///
 /// // Link with symbol table
 /// let mut table = SymTable::new();
-/// table.add_const("x", num!(5)).unwrap();
+/// table.add_const("x", num!(5), false).unwrap();
 /// let linked = program.link(table).unwrap();
 ///
 /// // Execute
@@ -71,6 +71,9 @@ pub struct Compiled {
     version: String,
     bytecode: Vec<Instr>,
     symbols: Vec<SymbolMetadata>,
+    /// Let declarations: (name, bytecode, symbol_metadata)
+    /// These are evaluated during linking to create local constants
+    let_decls: Vec<(String, Vec<Instr>, Vec<SymbolMetadata>)>,
 }
 
 /// Linked state - ready to execute.
@@ -122,7 +125,7 @@ impl<'src> Program<'src, Compiled> {
             })?;
 
         // Compile
-        let (bytecode, symbols) = Self::generate_bytecode(&ast);
+        let (bytecode, symbols, let_decls) = Self::generate_bytecode(&ast);
 
         Ok(Program {
             source: Some(trimmed),
@@ -131,6 +134,7 @@ impl<'src> Program<'src, Compiled> {
                 version: PROGRAM_VERSION.to_string(),
                 bytecode,
                 symbols,
+                let_decls,
             },
         })
     }
@@ -171,7 +175,53 @@ impl<'src> Program<'src, Compiled> {
     /// let program = Program::new_from_source("sin(pi)").unwrap();
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// ```
-    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+    pub fn link(mut self, mut table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+        // First, evaluate let declarations and add them as local constants
+        for (name, decl_bytecode, decl_symbols) in &self.state.let_decls {
+            // Resolve symbol indices for this declaration
+            let mut resolved_bytecode = decl_bytecode.clone();
+            let mut resolved_indices = vec![None; decl_symbols.len()];
+
+            // Resolve each symbol used in the declaration
+            for (decl_idx, decl_meta) in decl_symbols.iter().enumerate() {
+                let (table_idx, symbol) = table
+                    .get_with_index(&decl_meta.name)
+                    .ok_or_else(|| LinkError::MissingSymbol {
+                        name: decl_meta.name.to_string(),
+                    })?;
+
+                // Validate kind matches
+                Self::validate_symbol_kind(decl_meta, symbol)?;
+
+                resolved_indices[decl_idx] = Some(table_idx);
+            }
+
+            // Rewrite bytecode indices
+            for instr in &mut resolved_bytecode {
+                match instr {
+                    Instr::Load(idx) => {
+                        *idx = resolved_indices[*idx]
+                            .expect("Symbol should have been resolved");
+                    }
+                    Instr::Call(idx, _) => {
+                        *idx = resolved_indices[*idx]
+                            .expect("Symbol should have been resolved");
+                    }
+                    _ => {}
+                }
+            }
+
+            // Execute the declaration to get its value
+            let value = Vm::run(&resolved_bytecode, &table)?;
+
+            // Add as local constant (this will error if the name already exists - no shadowing!)
+            table
+                .add_const(name.clone(), value, true)
+                .map_err(|e| match e {
+                    SymbolError::DuplicateSymbol(name) => LinkError::RedefinedSymbol { name },
+                })?;
+        }
+
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
             let (resolved_idx, symbol) =
@@ -251,6 +301,7 @@ impl<'src> Program<'src, Compiled> {
                 version: binary.version,
                 bytecode: binary.bytecode,
                 symbols: binary.symbols,
+                let_decls: Vec::new(), // Will be restored from binary.locals later
             },
         })
     }
@@ -290,11 +341,36 @@ impl<'src> Program<'src, Compiled> {
     }
 
     /// Generates bytecode and collects symbol metadata in a single AST traversal.
-    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
+    /// Also extracts and compiles let declarations for evaluation during linking.
+    fn generate_bytecode(
+        ast: &Expr,
+    ) -> (
+        Vec<Instr>,
+        Vec<SymbolMetadata>,
+        Vec<(String, Vec<Instr>, Vec<SymbolMetadata>)>,
+    ) {
+        // Extract let declarations if this is a LetExpr
+        let let_decls = if let ExprKind::Let { decls, .. } = &ast.kind {
+            // Compile each declaration
+            decls
+                .iter()
+                .map(|(name, expr)| {
+                    let mut bytecode = Vec::new();
+                    let mut symbols = Vec::new();
+                    Self::emit_instr(expr, &mut bytecode, &mut symbols);
+                    (name.clone(), bytecode, symbols)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Generate bytecode for the main expression (body if LetExpr)
         let mut bytecode = Vec::new();
         let mut symbols = Vec::new();
         Self::emit_instr(ast, &mut bytecode, &mut symbols);
-        (bytecode, symbols)
+
+        (bytecode, symbols, let_decls)
     }
 
     /// Emits bytecode instructions for an expression node.
@@ -365,6 +441,12 @@ impl<'src> Program<'src, Compiled> {
                 // Backpatch the jump targets
                 bytecode[jz_idx] = Instr::Jz(else_start);
                 bytecode[jmp_idx] = Instr::Jmp(end);
+            }
+            ExprKind::Let { body, .. } => {
+                // Let declarations are evaluated at link-time, not compile-time
+                // Only emit bytecode for the body expression
+                // The declarations will be processed during linking
+                Self::emit_instr(body, bytecode, symbols);
             }
         }
     }
