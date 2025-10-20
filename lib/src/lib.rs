@@ -37,10 +37,10 @@
 //! # Custom Symbols
 //!
 //! ```
-//! use expr_solver::{eval_with_table, SymTable, Number, ParseNumber};
+//! use expr_solver::{num, eval_with_table, SymTable};
 //!
 //! let mut table = SymTable::stdlib();
-//! table.add_const("x", Number::parse_number("10").unwrap()).unwrap();
+//! table.add_const("x", num!(10)).unwrap();
 //!
 //! let result = eval_with_table("x * 2", table).unwrap();
 //! assert_eq!(result.to_string(), "20");
@@ -51,15 +51,15 @@
 //! The `Program` type uses the type-state pattern to enforce correct usage:
 //!
 //! ```
-//! use expr_solver::{SymTable, Program, Number, ParseNumber};
+//! use expr_solver::{num, SymTable, Program};
 //!
 //! // Compile expression to bytecode
 //! let program = Program::new_from_source("x + y").unwrap();
 //!
 //! // Link with symbol table (validated at link time)
 //! let mut table = SymTable::new();
-//! table.add_const("x", Number::parse_number("10").unwrap()).unwrap();
-//! table.add_const("y", Number::parse_number("5").unwrap()).unwrap();
+//! table.add_const("x", num!(10)).unwrap();
+//! table.add_const("y", num!(5)).unwrap();
 //!
 //! let linked = program.link(table).unwrap();
 //!
@@ -129,10 +129,10 @@ pub fn eval(expression: &str) -> Result<Number, String> {
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{eval_with_table, SymTable, Number, ParseNumber};
+/// use expr_solver::{num, eval_with_table, SymTable};
 ///
 /// let mut table = SymTable::stdlib();
-/// table.add_const("x", Number::parse_number("42").unwrap()).unwrap();
+/// table.add_const("x", num!(42)).unwrap();
 ///
 /// let result = eval_with_table("x * 2", table).unwrap();
 /// assert_eq!(result.to_string(), "84");

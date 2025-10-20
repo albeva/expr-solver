@@ -85,3 +85,49 @@ impl ParseNumber for Number {
         s.parse::<f64>().map_err(|e| e.to_string())
     }
 }
+
+/// Macro for creating numeric literals in a type-neutral way.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::num;
+///
+/// let x = num!(42);
+/// let y = num!(3.14159);
+/// let z = num!(2.5);
+/// ```
+///
+/// This macro resolves to:
+/// - `$val as f64` when `f64-floats` is enabled
+/// - `dec!($val)` when `decimal-precision` is enabled
+#[macro_export]
+#[cfg(feature = "decimal-precision")]
+macro_rules! num {
+    ($val:expr) => {
+        rust_decimal_macros::dec!($val)
+    };
+}
+
+/// Macro for creating numeric literals in a type-neutral way.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::num;
+///
+/// let x = num!(42);
+/// let y = num!(3.14159);
+/// let z = num!(2.5);
+/// ```
+///
+/// This macro resolves to:
+/// - `$val as f64` when `f64-floats` is enabled
+/// - `dec!($val)` when `decimal-precision` is enabled
+#[macro_export]
+#[cfg(feature = "f64-floats")]
+macro_rules! num {
+    ($val:expr) => {
+        $val as f64
+    };
+}

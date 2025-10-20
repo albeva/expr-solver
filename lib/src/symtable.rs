@@ -12,10 +12,10 @@ use std::borrow::Cow;
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{SymTable, Number, ParseNumber};
+/// use expr_solver::{num, SymTable};
 ///
 /// let mut table = SymTable::stdlib();
-/// table.add_const("x", Number::parse_number("42").unwrap()).unwrap();
+/// table.add_const("x", num!(42)).unwrap();
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct SymTable {

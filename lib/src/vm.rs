@@ -4,9 +4,6 @@ use crate::symbol::{FuncError, Symbol};
 use crate::symtable::SymTable;
 use thiserror::Error;
 
-#[cfg(all(test, feature = "decimal-precision"))]
-use rust_decimal_macros::dec;
-
 /// Virtual machine runtime errors.
 #[derive(Error, Debug, Clone)]
 pub enum VmError {
@@ -366,22 +363,8 @@ impl<'vm> Vm<'vm> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::num;
     use crate::symtable::SymTable;
-
-    // Helper macro to create numbers based on feature
-    #[cfg(feature = "decimal-precision")]
-    macro_rules! num {
-        ($val:expr) => {
-            dec!($val)
-        };
-    }
-
-    #[cfg(feature = "f64-floats")]
-    macro_rules! num {
-        ($val:expr) => {
-            $val as f64
-        };
-    }
 
     #[test]
     fn test_vm_error_stack_underflow() {

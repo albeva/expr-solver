@@ -45,14 +45,14 @@ pub enum ProgramOrigin {
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{Program, SymTable, Number, ParseNumber};
+/// use expr_solver::{num, Program, SymTable};
 ///
 /// // Compile from source
 /// let program = Program::new_from_source("x * 2 + 1").unwrap();
 ///
 /// // Link with symbol table
 /// let mut table = SymTable::new();
-/// table.add_const("x", Number::parse_number("5").unwrap()).unwrap();
+/// table.add_const("x", num!(5)).unwrap();
 /// let linked = program.link(table).unwrap();
 ///
 /// // Execute

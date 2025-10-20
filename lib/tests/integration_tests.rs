@@ -1,23 +1,5 @@
-use expr_solver::{Compiled, Linked, Number, Program, SymTable, eval, eval_with_table};
+use expr_solver::{Compiled, Linked, Number, Program, SymTable, eval, eval_with_table, num};
 use indoc::indoc;
-
-#[cfg(feature = "decimal-precision")]
-use rust_decimal_macros::dec;
-
-// Helper macro to create numbers based on feature
-#[cfg(feature = "decimal-precision")]
-macro_rules! num {
-    ($val:expr) => {
-        dec!($val)
-    };
-}
-
-#[cfg(feature = "f64-floats")]
-macro_rules! num {
-    ($val:expr) => {
-        $val as f64
-    };
-}
 
 // Helper function to evaluate an expression and expect an Ok result.
 fn eval_ok(expr: &str) -> Number {
