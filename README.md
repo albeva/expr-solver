@@ -15,21 +15,28 @@ A mathematical expression evaluator library written in Rust with support for cus
 
 ## How It Works
 
-The library implements a classic compiler pipeline:
+The library implements a type-safe compiler pipeline using Rust's type system:
 
 ```
-Source → Lexer → Parser → AST → Semantic Analysis → IR → Bytecode → VM
+Source → Lexer → Parser → AST → Compiler → Program<Compiled>
+                                                     ↓ link(SymTable)
+                                            Program<Linked> → VM → Result
 ```
 
 1. **Lexer** - Tokenizes the input string into operators, numbers, and identifiers
 2. **Parser** - Uses operator precedence climbing to build an Abstract Syntax Tree (AST)
-3. **Semantic Analysis** - Resolves symbols and validates function arities
-4. **IR Builder** - Converts the AST into stack-based bytecode instructions
+3. **Compiler** - Single-pass compilation: generates bytecode and collects symbol metadata
+4. **Linker** - Validates symbols exist in the symbol table and remaps indices
 5. **Virtual Machine** - Executes the bytecode on a stack-based VM
 
+**Type-State Pattern**: The `Program` type uses Rust's type system to enforce the correct pipeline order at compile time:
+- `Program<Compiled>` - Bytecode generated, not yet linked
+- `Program<Linked>` - Linked with symbol table, ready to execute
+
 This architecture allows for:
-- Separating parsing from execution
-- Compiling expressions once and running them multiple times
+- Compile-time safety: cannot execute an unlinked program
+- Separating compilation from execution
+- Compiling expressions once and running them multiple times with different symbol tables
 - Serializing compiled bytecode to disk for later use
 
 ## Usage
@@ -52,31 +59,28 @@ Add this to your `Cargo.toml`:
 expr-solver-bin = "1.0.3"
 ```
 
-### Basic Example
+### Quick Evaluation
 
 ```rust
-use expr_solver::Eval;
+use expr_solver::eval;
 
 fn main() {
-    // Quick one-liner evaluation
-    match Eval::evaluate("2+3*4") {
-        Ok(result) => println!("Result: {}", result),
+    // Quick one-liner evaluation with standard library
+    match eval("2 + 3 * 4") {
+        Ok(result) => println!("Result: {}", result), // 14
         Err(e) => eprintln!("Error: {}", e),
     }
 
-    // Or create an evaluator instance for more control
-    let mut eval = Eval::new("sqrt(16) + pi");
-    match eval.run() {
-        Ok(result) => println!("Result: {}", result),
-        Err(e) => eprintln!("Error: {}", e),
-    }
+    // Works with built-in functions and constants
+    let result = eval("sqrt(16) + pi").unwrap();
+    println!("Result: {}", result); // 7.14159...
 }
 ```
 
-### Advanced Example
+### Custom Symbols
 
 ```rust
-use expr_solver::{Eval, SymTable};
+use expr_solver::{eval_with_table, SymTable};
 use rust_decimal_macros::dec;
 
 fn main() {
@@ -86,26 +90,62 @@ fn main() {
     table.add_func("double", 1, false, |args| Ok(args[0] * dec!(2))).unwrap();
 
     // Evaluate with custom symbols
-    let mut eval = Eval::with_table("double(x) + sqrt(25)", table);
-    let result = eval.run().unwrap();
+    let result = eval_with_table("double(x) + sqrt(25)", table).unwrap();
     println!("Result: {}", result); // 25
 }
 ```
 
-### Compile and Execute
+### Advanced: Compile and Reuse
+
+For expressions that need to be evaluated multiple times, compile once and execute many times:
 
 ```rust
-use expr_solver::Eval;
-use std::path::PathBuf;
+use expr_solver::{load, load_with_table, SymTable};
+use rust_decimal_macros::dec;
 
 fn main() {
-    // Compile expression to bytecode
-    let mut eval = Eval::new("2 + 3 * 4");
-    eval.compile_to_file(&PathBuf::from("expr.bin")).unwrap();
+    // Compile expression
+    let program = load("x * 2 + y").unwrap();
+
+    // Execute with different symbol tables
+    let mut table1 = SymTable::new();
+    table1.add_const("x", dec!(10)).unwrap();
+    table1.add_const("y", dec!(5)).unwrap();
+
+    let result1 = program.link(table1).unwrap().execute().unwrap();
+    println!("Result 1: {}", result1); // 25
+
+    // Or compile and link in one step
+    let mut table2 = SymTable::stdlib();
+    table2.add_const("x", dec!(20)).unwrap();
+    table2.add_const("y", dec!(3)).unwrap();
+
+    let program = load_with_table("x * 2 + y", table2).unwrap();
+    let result2 = program.execute().unwrap();
+    println!("Result 2: {}", result2); // 43
+}
+```
+
+### Bytecode Serialization
+
+```rust
+use expr_solver::{load_with_table, eval_file_with_table, Program, SymTable};
+
+fn main() {
+    // Compile and save to file
+    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).unwrap();
+    program.save_bytecode_to_file("expr.bin").unwrap();
 
     // Load and execute the compiled bytecode
-    let mut eval = Eval::new_from_file(PathBuf::from("expr.bin"));
-    let result = eval.run().unwrap();
+    let result = eval_file_with_table("expr.bin", SymTable::stdlib()).unwrap();
+    println!("Result: {}", result); // 14
+
+    // Or load and link manually
+    let program = Program::new_from_file("expr.bin")
+        .unwrap()
+        .link(SymTable::stdlib())
+        .unwrap();
+    let result = program.execute().unwrap();
     println!("Result: {}", result); // 14
 }
 ```
@@ -115,11 +155,11 @@ fn main() {
 You can inspect the generated bytecode as human-readable assembly:
 
 ```rust
-use expr_solver::Eval;
+use expr_solver::{load_with_table, SymTable};
 
 fn main() {
-    let mut eval = Eval::new("2 + 3 * 4");
-    println!("{}", eval.get_assembly().unwrap());
+    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).unwrap();
+    println!("{}", program.get_assembly());
 }
 ```
 

@@ -1,16 +1,72 @@
-//! A simple expression solver library
+//! A mathematical expression evaluator library with bytecode compilation.
 //!
-//! Parses and evaluates mathematical expressions with built-in functions and constants.
+//! This library provides a complete compiler pipeline for mathematical expressions,
+//! from parsing to bytecode execution on a stack-based virtual machine.
 //!
 //! # Features
 //!
-//! - Mathematical operators: `+`, `-`, `*`, `/`, `^`, unary `-`, `!` (factorial)
-//! - Comparison operators: `==`, `!=`, `<`, `<=`, `>`, `>=` (return 1.0 or 0.0)
-//! - Built-in constants: `pi`, `e`, `tau`, `ln2`, `ln10`, `sqrt2`
-//! - Basic math functions: `abs`, `floor`, `ceil`, `round`, `trunc`, `fract`
-//! - Variadic functions: `min`, `max`, `sum`, `avg`
-//! - 128-bit decimal arithmetic (no floating-point representation errors!)
-//! - Error handling with source location information
+//! - **Type-safe compilation** - Uses Rust's type system to enforce correct pipeline order
+//! - **128-bit decimal precision** - No floating-point errors using `rust_decimal`
+//! - **Rich error messages** - Parse errors with syntax highlighting
+//! - **Bytecode compilation** - Compile once, execute many times
+//! - **Custom symbols** - Add your own constants and functions
+//! - **Serialization** - Save/load compiled programs to/from disk
+//!
+//! # Quick Start
+//!
+//! ```
+//! use expr_solver::eval;
+//!
+//! // Simple evaluation
+//! let result = eval("2 + 3 * 4").unwrap();
+//! assert_eq!(result.to_string(), "14");
+//! ```
+//!
+//! # Custom Symbols
+//!
+//! ```
+//! use expr_solver::{eval_with_table, SymTable};
+//! use rust_decimal_macros::dec;
+//!
+//! let mut table = SymTable::stdlib();
+//! table.add_const("x", dec!(10)).unwrap();
+//!
+//! let result = eval_with_table("x * 2", table).unwrap();
+//! assert_eq!(result, dec!(20));
+//! ```
+//!
+//! # Advanced: Type-State Pattern
+//!
+//! The `Program` type uses the type-state pattern to enforce correct usage:
+//!
+//! ```
+//! use expr_solver::{load, SymTable};
+//! use rust_decimal_macros::dec;
+//!
+//! // Compile expression to bytecode
+//! let program = load("x + y").unwrap();
+//!
+//! // Link with symbol table (validated at link time)
+//! let mut table = SymTable::new();
+//! table.add_const("x", dec!(10)).unwrap();
+//! table.add_const("y", dec!(5)).unwrap();
+//!
+//! let linked = program.link(table).unwrap();
+//!
+//! // Execute
+//! let result = linked.execute().unwrap();
+//! assert_eq!(result, dec!(15));
+//! ```
+//!
+//! # Supported Operators
+//!
+//! - Arithmetic: `+`, `-`, `*`, `/`, `^` (power), `!` (factorial), unary `-`
+//! - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (return 1 or 0)
+//! - Grouping: `(` `)`
+//!
+//! # Built-in Functions
+//!
+//! See [`SymTable::stdlib()`] for the complete list of built-in functions and constants.
 
 // Core types (shared)
 mod ir;
