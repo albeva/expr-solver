@@ -1,4 +1,4 @@
-//! Error types for v2 implementation.
+//! Error types for parsing, linking, and program operations.
 
 use crate::span::Span;
 use crate::span::SpanError;

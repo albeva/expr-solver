@@ -1,4 +1,4 @@
-//! Abstract Syntax Tree (v2) with owned strings.
+//! Abstract Syntax Tree for mathematical expressions.
 
 use crate::span::Span;
 use crate::token::Token;

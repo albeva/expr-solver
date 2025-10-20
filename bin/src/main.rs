@@ -44,11 +44,8 @@ fn parse_key_val(s: &str) -> Result<(String, f64), Box<dyn std::error::Error + S
 }
 
 fn main() {
-    match run() {
-        Err(err) => {
-            eprintln!("{err}");
-        }
-        _ => {}
+    if let Err(err) = run() {
+        eprintln!("{err}");
     }
 }
 

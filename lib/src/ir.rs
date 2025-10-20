@@ -1,4 +1,4 @@
-//! Bytecode instruction definitions shared across v1 and v2.
+//! Bytecode instruction definitions for the virtual machine.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

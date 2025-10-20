@@ -39,12 +39,12 @@ impl<'src> Parser<'src> {
         let mut lookahead = lexer.next();
         let mut span = lexer.span();
 
-        if lookahead == Token::EOF {
+        if lookahead == Token::Eof {
             return Ok(None);
         }
 
         let expr = Self::expression(&mut lexer, &mut lookahead, &mut span)?;
-        Self::expect_token(&mut lexer, &mut lookahead, &mut span, &Token::EOF)?;
+        Self::expect_token(&mut lexer, &mut lookahead, &mut span, &Token::Eof)?;
         Ok(Some(expr))
     }
 

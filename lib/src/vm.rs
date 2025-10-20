@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_stack_underflow() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![Instr::Add]; // No values on stack
 
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_division_by_zero() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div];
 
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_invalid_final_stack() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![
             Instr::Push(dec!(1)),
@@ -325,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_invalid_load() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_invalid_call() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let (pi_idx, _) = table.get_with_index("pi").unwrap();
 
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_vm_error_call_stack_underflow() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn test_binary_operations() {
-        let vm = Vm::default();
+        let vm = Vm;
         let table = SymTable::stdlib();
 
         // Test all binary operations

@@ -32,7 +32,7 @@ impl<'src> Lexer<'src> {
         self.start = self.pos;
         let ch = match self.read() {
             Some(c) => c,
-            None => return Token::EOF,
+            None => return Token::Eof,
         };
         match ch {
             '0'..='9' => self.number(false),
