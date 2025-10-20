@@ -1,6 +1,6 @@
 //! Type-state program implementation for compile-link-execute workflow.
 
-use super::ast::{BinOp, Expr, ExprKind, UnOp};
+use super::ast::{Expr, ExprKind};
 use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
@@ -310,27 +310,12 @@ impl<'src> Program<'src, Compiled> {
             }
             ExprKind::Unary { op, expr } => {
                 Self::emit_instr(expr, bytecode, symbols);
-                match op {
-                    UnOp::Neg => bytecode.push(Instr::Neg),
-                    UnOp::Fact => bytecode.push(Instr::Fact),
-                }
+                bytecode.push((*op).into());
             }
             ExprKind::Binary { op, left, right } => {
                 Self::emit_instr(left, bytecode, symbols);
                 Self::emit_instr(right, bytecode, symbols);
-                bytecode.push(match op {
-                    BinOp::Add => Instr::Add,
-                    BinOp::Sub => Instr::Sub,
-                    BinOp::Mul => Instr::Mul,
-                    BinOp::Div => Instr::Div,
-                    BinOp::Pow => Instr::Pow,
-                    BinOp::Equal => Instr::Equal,
-                    BinOp::NotEqual => Instr::NotEqual,
-                    BinOp::Less => Instr::Less,
-                    BinOp::LessEqual => Instr::LessEqual,
-                    BinOp::Greater => Instr::Greater,
-                    BinOp::GreaterEqual => Instr::GreaterEqual,
-                });
+                bytecode.push((*op).into());
             }
             ExprKind::Call { name, args } => {
                 // Emit arguments first
