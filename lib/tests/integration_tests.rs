@@ -1,24 +1,22 @@
-use expr_solver::{Eval, SymTable};
+use expr_solver::{SymTable, eval, eval_with_table, load, load_with_table};
 use indoc::indoc;
 use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
 
 // Helper function to evaluate an expression and expect an Ok result.
 fn eval_ok(expr: &str) -> Decimal {
-    let mut eval = Eval::new(expr);
-    eval.run().expect("Evaluation should be successful")
+    eval(expr).expect("Evaluation should be successful")
 }
 
 // Helper function to evaluate an expression and expect an Err result.
 fn eval_err(expr: &str) -> String {
     colored::control::set_override(false);
-    let mut eval = Eval::new(expr);
-    eval.run().expect_err("Evaluation should fail")
+    eval(expr).expect_err("Evaluation should fail")
 }
 
 // Helper function to evaluate an expression with a custom symbol table and expect an Ok result.
 fn eval_with_custom_table_ok(expr: &str, table: SymTable) -> Decimal {
-    Eval::evaluate_with_table(expr, table).expect("Evaluation should be successful")
+    eval_with_table(expr, table).expect("Evaluation should be successful")
 }
 
 #[test]
@@ -128,47 +126,47 @@ fn test_custom_symbols() {
 #[rustfmt::skip]
 fn test_syntax_errors() {
     assert_eq!(eval_err("1 + * 2"), indoc! {r#"
-        Unexpected token '*', expected 'an expression'
+        Unexpected token: unexpected token '*', expected an expression
         1 | 1 + * 2
           |     ^"#
     });
     assert_eq!(eval_err("(1 + 2"), indoc! {r#"
-        Unexpected token 'EOF', expected ')'
+        Unexpected token: unexpected token 'EOF', expected ')'
         1 | (1 + 2
           |       ^"#
     });
     assert_eq!(eval_err("1 2"), indoc! {r#"
-        Unexpected token '2', expected 'EOF'
+        Unexpected token: unexpected token '2', expected 'EOF'
         1 | 1 2
           |   ^"#
     });
     assert_eq!(eval_err("()"), indoc! {r#"
-        Unexpected token ')', expected 'an expression'
+        Unexpected token: unexpected token ')', expected an expression
         1 | ()
           |  ^"#
     });
     assert_eq!(eval_err("sin("), indoc! {r#"
-        Unexpected token 'EOF', expected 'an expression'
+        Unexpected token: unexpected token 'EOF', expected an expression
         1 | sin(
           |     ^"#
     });
     assert_eq!(eval_err("1 + "), indoc! {r#"
-        Unexpected token 'EOF', expected 'an expression'
+        Unexpected token: unexpected token 'EOF', expected an expression
         1 | 1 +
           |    ^"#
     });
     assert_eq!(eval_err("* 2"), indoc! {r#"
-        Unexpected token '*', expected 'an expression'
+        Unexpected token: unexpected token '*', expected an expression
         1 | * 2
           | ^"#
     });
     assert_eq!(eval_err("1 (2 + 3)"), indoc! {r#"
-        Unexpected token '(', expected 'EOF'
+        Unexpected token: unexpected token '(', expected 'EOF'
         1 | 1 (2 + 3)
           |   ^"#
     });
     assert_eq!(eval_err("sin 1"), indoc! {r#"
-        Unexpected token '1', expected 'EOF'
+        Unexpected token: unexpected token '1', expected 'EOF'
         1 | sin 1
           |     ^"#
     });
@@ -177,51 +175,16 @@ fn test_syntax_errors() {
 #[test]
 #[rustfmt::skip]
 fn test_semantic_errors() {
-    assert_eq!(eval_err("foo()"), indoc! {r#"
-        Undefined symbol 'foo'
-        1 | foo()
-          | ^~~"#
-    });
-    assert_eq!(eval_err("🙈🍅🎉🌴🎶()"), indoc! {r#"
-        Undefined symbol '🙈🍅🎉🌴🎶'
-        1 | 🙈🍅🎉🌴🎶()
-          | ^~~~~~~~~~"#
-    });
-    assert_eq!(eval_err("bar"), indoc! {r#"
-        Undefined symbol 'bar'
-        1 | bar
-          | ^~~"#
-    });
-    assert_eq!(eval_err("sin(1, 2)"), indoc! {r#"
-        Function 'sin' expects exactly 1 arguments but got 2
-        1 | sin(1, 2)
-          | ^~~~~~~~~"#
-    });
-    assert_eq!(eval_err("max()"), indoc! {r#"
-        Function 'max' expects at least 1 arguments but got 0
-        1 | max()
-          | ^~~~~"#
-    });
-    assert_eq!(eval_err("pi()"), indoc! {r#"
-        Symbol 'pi' is not a function
-        1 | pi()
-          | ^~"#
-    });
-    assert_eq!(eval_err("1 + sin"), indoc! {r#"
-        Symbol 'sin' is not a constant
-        1 | 1 + sin
-          |     ^~~"#
-    });
-    assert_eq!(eval_err("avg()"), indoc! {r#"
-        Function 'avg' expects at least 1 arguments but got 0
-        1 | avg()
-          | ^~~~~"#
-    });
-    assert_eq!(eval_err("clamp(1, 2)"), indoc! {r#"
-        Function 'clamp' expects exactly 3 arguments but got 2
-        1 | clamp(1, 2)
-          | ^~~~~~~~~~~"#
-    });
+    // V2 defers validation to link time, so we get link errors instead of semantic errors
+    assert_eq!(eval_err("foo()"), "Link error: Missing symbol: 'foo' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("🙈🍅🎉🌴🎶()"), "Link error: Missing symbol: '🙈🍅🎉🌴🎶' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("bar"), "Link error: Missing symbol: 'bar' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("sin(1, 2)"), "Link error: Type mismatch for symbol 'sin': expected exactly 1 arguments, found 2 arguments provided");
+    assert_eq!(eval_err("max()"), "Link error: Type mismatch for symbol 'max': expected at least 1 arguments, found 0 arguments provided");
+    assert_eq!(eval_err("pi()"), "Link error: Type mismatch for symbol 'pi': expected function, found constant");
+    assert_eq!(eval_err("1 + sin"), "Link error: Type mismatch for symbol 'sin': expected constant, found function");
+    assert_eq!(eval_err("avg()"), "Link error: Type mismatch for symbol 'avg': expected at least 1 arguments, found 0 arguments provided");
+    assert_eq!(eval_err("clamp(1, 2)"), "Link error: Type mismatch for symbol 'clamp': expected exactly 3 arguments, found 2 arguments provided");
 }
 
 #[test]
@@ -278,14 +241,102 @@ fn test_if_function() {
 #[test]
 #[rustfmt::skip]
 fn test_if_function_semantic_errors() {
-    assert_eq!(eval_err("if(1, 2)"), indoc! {r#"
-        Function 'if' expects exactly 3 arguments but got 2
-        1 | if(1, 2)
-          | ^~~~~~~~"#
-    });
-    assert_eq!(eval_err("if(1, 2, 3, 4)"), indoc! {r#"
-        Function 'if' expects exactly 3 arguments but got 4
-        1 | if(1, 2, 3, 4)
-          | ^~~~~~~~~~~~~~"#
-    });
+    // V2 defers validation to link time
+    assert_eq!(eval_err("if(1, 2)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 2 arguments provided");
+    assert_eq!(eval_err("if(1, 2, 3, 4)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 4 arguments provided");
+}
+
+// ====================
+// Program API Tests
+// ====================
+
+#[test]
+fn test_program_basic_arithmetic() {
+    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
+
+    let result = program.execute().expect("execution failed");
+    assert_eq!(result, dec!(14));
+}
+
+#[test]
+fn test_program_with_constants() {
+    let program = load_with_table("pi * 2", SymTable::stdlib()).expect("link failed");
+
+    let result = program.execute().expect("execution failed");
+    // pi * 2 ≈ 6.28...
+    assert!(result > dec!(6.28) && result < dec!(6.29));
+}
+
+#[test]
+fn test_program_with_functions() {
+    let program = load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
+
+    let result = program.execute().expect("execution failed");
+    assert_eq!(result, dec!(4)); // sqrt(16) + sin(0) = 4 + 0 = 4
+}
+
+#[test]
+fn test_program_symtable_mutation() {
+    let program = load("x + y").expect("compilation failed");
+
+    // Create symbol table with x and y
+    let mut table = SymTable::new();
+    table.add_const("x", dec!(10)).unwrap();
+    table.add_const("y", dec!(20)).unwrap();
+
+    let mut program = program.link(table).expect("link failed");
+
+    // First execution
+    let result = program.execute().expect("execution failed");
+    assert_eq!(result, dec!(30));
+
+    // Modify symbol table
+    program.symtable_mut().add_const("z", dec!(100)).unwrap();
+
+    // Execute again (x + y should still be 30)
+    let result = program.execute().expect("execution failed");
+    assert_eq!(result, dec!(30));
+}
+
+#[test]
+fn test_program_serialization() {
+    let program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
+
+    // Execute original
+    let result1 = program.execute().expect("execution failed");
+
+    // Serialize
+    let bytes = program.to_bytecode().expect("serialization failed");
+
+    // Deserialize and re-link
+    use expr_solver::Program;
+    let program2 = Program::new_from_bytecode(&bytes)
+        .expect("deserialization failed")
+        .link(SymTable::stdlib())
+        .expect("link failed");
+
+    // Execute deserialized
+    let result2 = program2.execute().expect("execution failed");
+
+    assert_eq!(result1, result2);
+}
+
+#[test]
+fn test_program_get_assembly() {
+    let program = load_with_table("2 + 3", SymTable::stdlib()).expect("link failed");
+
+    let assembly = program.get_assembly();
+    assert!(assembly.contains("PUSH"));
+    assert!(assembly.contains("ADD"));
+}
+
+#[test]
+fn test_program_link_validation() {
+    let program = load("x + y").expect("compilation failed");
+
+    // Try to link with empty symbol table (should fail)
+    let empty_table = SymTable::new();
+    let result = program.link(empty_table);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Missing symbol"));
 }

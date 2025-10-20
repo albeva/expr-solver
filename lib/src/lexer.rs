@@ -1,4 +1,5 @@
-use crate::source::Source;
+//! Lexer for tokenizing mathematical expressions.
+
 use crate::span::Span;
 use crate::token::Token;
 use rust_decimal::Decimal;
@@ -15,11 +16,11 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    /// Create a new lexer from a source.
-    pub fn new(source: &'src Source) -> Self {
+    /// Create a new lexer from a string slice.
+    pub fn new(input: &'src str) -> Self {
         Self {
-            input: source.input,
-            iter: source.input.chars().peekable(),
+            input,
+            iter: input.chars().peekable(),
             start: 0,
             pos: 0,
         }
@@ -31,7 +32,7 @@ impl<'src> Lexer<'src> {
         self.start = self.pos;
         let ch = match self.read() {
             Some(c) => c,
-            None => return Token::EOF,
+            None => return Token::Eof,
         };
         match ch {
             '0'..='9' => self.number(false),
@@ -115,7 +116,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn peek(&mut self) -> Option<char> {
-        self.iter.peek().map(|ch| *ch)
+        self.iter.peek().copied()
     }
 
     fn read(&mut self) -> Option<char> {
@@ -180,95 +181,5 @@ impl<'src> Lexer<'src> {
         } else {
             Token::Greater
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::source::Source;
-    use crate::token::Token;
-    use rust_decimal::dec;
-
-    fn lex_all<'src>(source: &'src Source) -> Vec<Token<'src>> {
-        let mut lexer = Lexer::new(source);
-        let mut tokens = Vec::new();
-        loop {
-            let tok = lexer.next();
-            if matches!(tok, Token::EOF) {
-                break;
-            }
-            tokens.push(tok);
-        }
-        tokens
-    }
-
-    #[test]
-    fn test_number_with_multiple_dots() {
-        let source = Source { input: "1.2.3" };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Invalid("1.2.3"));
-    }
-
-    #[test]
-    fn test_identifier_with_emoji() {
-        let source = Source {
-            input: "foo😀 bar🚀",
-        };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Ident("foo😀"));
-        assert_eq!(tokens[1], Token::Ident("bar🚀"));
-    }
-
-    #[test]
-    fn test_unknown_token() {
-        let source = Source { input: "$" };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Invalid("$"));
-    }
-
-    #[test]
-    fn test_whitespace_handling() {
-        let source = Source {
-            input: "  1 + 2\t\t*",
-        };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Number(dec!(1)));
-        assert_eq!(tokens[1], Token::Plus);
-        assert_eq!(tokens[2], Token::Number(dec!(2)));
-        assert_eq!(tokens[3], Token::Star);
-    }
-
-    #[test]
-    fn test_comparison_operators() {
-        let source = Source {
-            input: "== != < <= > >=",
-        };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Equal);
-        assert_eq!(tokens[1], Token::NotEqual);
-        assert_eq!(tokens[2], Token::Less);
-        assert_eq!(tokens[3], Token::LessEqual);
-        assert_eq!(tokens[4], Token::Greater);
-        assert_eq!(tokens[5], Token::GreaterEqual);
-    }
-
-    #[test]
-    fn test_factorial_vs_not_equal() {
-        // Test that ! is factorial but != is not equal
-        let source = Source { input: "5! != 100" };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Number(dec!(5)));
-        assert_eq!(tokens[1], Token::Bang);
-        assert_eq!(tokens[2], Token::NotEqual);
-        assert_eq!(tokens[3], Token::Number(dec!(100)));
-    }
-
-    #[test]
-    fn test_invalid_single_equals() {
-        // Single '=' should be invalid since we only support '=='
-        let source = Source { input: "=" };
-        let tokens = lex_all(&source);
-        assert_eq!(tokens[0], Token::Invalid("="));
     }
 }

@@ -1,10 +1,15 @@
+//! Abstract Syntax Tree for mathematical expressions.
+
 use crate::span::Span;
 use crate::token::Token;
 use rust_decimal::Decimal;
 
+/// Unary operators: negation and factorial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
+    /// Negation (`-`)
     Neg,
+    /// Factorial (`!`)
     Fact,
 }
 
@@ -18,19 +23,30 @@ impl UnOp {
     }
 }
 
+/// Binary operators: arithmetic and comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
+    /// Addition (`+`)
     Add,
+    /// Subtraction (`-`)
     Sub,
+    /// Multiplication (`*`)
     Mul,
+    /// Division (`/`)
     Div,
+    /// Exponentiation (`^`)
     Pow,
-    // Comparison operators
+    /// Equality (`==`)
     Equal,
+    /// Inequality (`!=`)
     NotEqual,
+    /// Less than (`<`)
     Less,
+    /// Less than or equal (`<=`)
     LessEqual,
+    /// Greater than (`>`)
     Greater,
+    /// Greater than or equal (`>=`)
     GreaterEqual,
 }
 
@@ -53,36 +69,41 @@ impl BinOp {
     }
 }
 
+/// Expression node in the AST with source location.
 #[derive(Debug, Clone)]
-pub struct Expr<'src> {
-    pub kind: ExprKind<'src>,
+pub struct Expr {
+    pub kind: ExprKind,
     pub span: Span,
 }
 
+/// Expression kind representing different types of expressions.
 #[derive(Debug, Clone)]
-pub enum ExprKind<'src> {
+pub enum ExprKind {
+    /// Numeric literal
     Literal(Decimal),
+    /// Identifier (constant or variable)
     Ident {
-        name: &'src str,
-        sym_index: Option<usize>,
+        name: String,
     },
+    /// Unary operation
     Unary {
         op: UnOp,
-        expr: Box<Expr<'src>>,
+        expr: Box<Expr>,
     },
+    /// Binary operation
     Binary {
         op: BinOp,
-        left: Box<Expr<'src>>,
-        right: Box<Expr<'src>>,
+        left: Box<Expr>,
+        right: Box<Expr>,
     },
+    /// Function call
     Call {
-        name: &'src str,
-        args: Vec<Expr<'src>>,
-        sym_index: Option<usize>,
+        name: String,
+        args: Vec<Expr>,
     },
 }
 
-impl<'src> Expr<'src> {
+impl Expr {
     pub fn literal(value: Decimal, span: Span) -> Self {
         Self {
             kind: ExprKind::Literal(value),
@@ -90,17 +111,14 @@ impl<'src> Expr<'src> {
         }
     }
 
-    pub fn ident(name: &'src str, span: Span) -> Self {
+    pub fn ident(name: String, span: Span) -> Self {
         Self {
-            kind: ExprKind::Ident {
-                name,
-                sym_index: None,
-            },
+            kind: ExprKind::Ident { name },
             span,
         }
     }
 
-    pub fn unary(op: UnOp, expr: Expr<'src>, span: Span) -> Self {
+    pub fn unary(op: UnOp, expr: Expr, span: Span) -> Self {
         Self {
             kind: ExprKind::Unary {
                 op,
@@ -110,7 +128,7 @@ impl<'src> Expr<'src> {
         }
     }
 
-    pub fn binary(op: BinOp, left: Expr<'src>, right: Expr<'src>, span: Span) -> Self {
+    pub fn binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Self {
         Self {
             kind: ExprKind::Binary {
                 op,
@@ -121,13 +139,9 @@ impl<'src> Expr<'src> {
         }
     }
 
-    pub fn call(name: &'src str, args: Vec<Expr<'src>>, span: Span) -> Self {
+    pub fn call(name: String, args: Vec<Expr>, span: Span) -> Self {
         Self {
-            kind: ExprKind::Call {
-                name,
-                args,
-                sym_index: None,
-            },
+            kind: ExprKind::Call { name, args },
             span,
         }
     }

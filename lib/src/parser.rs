@@ -1,183 +1,195 @@
-use crate::ast::{BinOp, Expr, UnOp};
-use crate::lexer::Lexer;
-use crate::source::Source;
-use crate::span::{Span, SpanError};
+//! Recursive descent parser for mathematical expressions.
+
+use super::ast::{BinOp, Expr, UnOp};
+use super::error::ParseError;
+use super::lexer::Lexer;
+use crate::span::Span;
 use crate::token::Token;
-use thiserror::Error;
 
-/// Expression parsing errors.
-#[derive(Error, Debug, Clone)]
-pub enum ParseError {
-    #[error("Unexpected token '{found}', expected '{expected}'")]
-    UnexpectedToken {
-        found: String,
-        expected: String,
-        span: Span,
-    },
-}
-
-impl SpanError for ParseError {
-    fn span(&self) -> Span {
-        match self {
-            ParseError::UnexpectedToken { span, .. } => *span,
-        }
-    }
-}
-
-pub type ParseResult<'src> = Result<Expr<'src>, ParseError>;
+pub type ParseResult = Result<Expr, ParseError>;
 
 /// Recursive descent parser for mathematical expressions.
 ///
 /// Uses operator precedence climbing for efficient binary operator parsing.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::Parser;
+///
+/// let mut parser = Parser::new("2 + 3 * 4");
+/// let ast = parser.parse().unwrap();
+/// assert!(ast.is_some());
+/// ```
 pub struct Parser<'src> {
-    lexer: Lexer<'src>,
-    lookahead: Token<'src>,
-    span: Span,
+    input: &'src str,
 }
 
 impl<'src> Parser<'src> {
-    /// Creates a new parser from a source.
-    pub fn new(source: &'src Source) -> Self {
-        let mut lexer = Lexer::new(source);
-        let lookahead = lexer.next();
-        let span = lexer.span();
-        Self {
-            lexer,
-            lookahead,
-            span,
-        }
+    /// Creates a new parser from a string slice.
+    pub fn new(input: &'src str) -> Self {
+        Self { input }
     }
 
-    /// Parses the source into an abstract syntax tree.
+    /// Parses the input into an abstract syntax tree.
     ///
-    /// Returns `None` for empty input, or an expression AST on success.
-    pub fn parse(&mut self) -> Result<Option<Expr<'src>>, ParseError> {
-        if self.lookahead == Token::EOF {
+    /// Returns `None` for empty input, or an expression on success.
+    pub fn parse(&mut self) -> Result<Option<Expr>, ParseError> {
+        let mut lexer = Lexer::new(self.input);
+        let mut lookahead = lexer.next();
+        let mut span = lexer.span();
+
+        if lookahead == Token::Eof {
             return Ok(None);
         }
-        let expr = self.expression()?;
-        self.expect(&Token::EOF)?;
+
+        let expr = Self::expression(&mut lexer, &mut lookahead, &mut span)?;
+        Self::expect_token(&mut lexer, &mut lookahead, &mut span, &Token::Eof)?;
         Ok(Some(expr))
     }
 
-    fn expression(&mut self) -> ParseResult<'src> {
-        let lhs = self.primary()?;
-        self.climb(lhs, 1)
+    fn expression<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+    ) -> ParseResult {
+        let lhs = Self::primary(lexer, lookahead, span)?;
+        Self::climb(lexer, lookahead, span, lhs, 1)
     }
 
-    fn primary(&mut self) -> ParseResult<'src> {
-        let span = self.span;
-        match self.lookahead {
+    fn primary<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+    ) -> ParseResult {
+        let current_span = *span;
+        match *lookahead {
             Token::Number(n) => {
-                self.advance();
-                Ok(Expr::literal(n, span))
+                Self::advance(lexer, lookahead, span);
+                Ok(Expr::literal(n, current_span))
             }
             Token::Ident(id) => {
-                self.advance();
-                if self.lookahead == Token::ParenOpen {
-                    return self.call(id, span);
+                let id_string = id.to_string();
+                Self::advance(lexer, lookahead, span);
+                if *lookahead == Token::ParenOpen {
+                    return Self::call(lexer, lookahead, span, id_string, current_span);
                 }
-                Ok(Expr::ident(id, span))
+                Ok(Expr::ident(id_string, current_span))
             }
             Token::Minus => {
-                self.advance();
-                let expr = self.primary()?;
-                let expr = self.climb(expr, Token::Negate.precedence())?;
-                let span = self.span.merge(expr.span);
-                Ok(Expr::unary(UnOp::Neg, expr, span))
+                Self::advance(lexer, lookahead, span);
+                let expr = Self::primary(lexer, lookahead, span)?;
+                let expr = Self::climb(lexer, lookahead, span, expr, Token::Negate.precedence())?;
+                let full_span = current_span.merge(expr.span);
+                Ok(Expr::unary(UnOp::Neg, expr, full_span))
             }
             Token::ParenOpen => {
-                self.advance();
-                let expr = self.expression()?;
-                self.expect(&Token::ParenClose)?;
+                Self::advance(lexer, lookahead, span);
+                let expr = Self::expression(lexer, lookahead, span)?;
+                Self::expect_token(lexer, lookahead, span, &Token::ParenClose)?;
                 Ok(expr)
             }
             _ => Err(ParseError::UnexpectedToken {
-                found: self.lookahead.lexeme().to_string(),
-                expected: "an expression".to_string(),
-                span,
+                message: format!(
+                    "unexpected token '{}', expected an expression",
+                    lookahead.lexeme()
+                ),
+                span: current_span,
             }),
         }
     }
 
-    fn call(&mut self, id: &'src str, span: Span) -> ParseResult<'src> {
+    fn call<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+        id: String,
+        start_span: Span,
+    ) -> ParseResult {
         // assume lookahead is '('
-        self.advance();
+        Self::advance(lexer, lookahead, span);
 
-        let mut args: Vec<Expr<'src>> = Vec::new();
-        while self.lookahead != Token::ParenClose {
-            let arg = self.expression()?;
+        let mut args: Vec<Expr> = Vec::new();
+        while *lookahead != Token::ParenClose {
+            let arg = Self::expression(lexer, lookahead, span)?;
             args.push(arg);
-            if self.lookahead == Token::Comma {
-                self.advance();
+            if *lookahead == Token::Comma {
+                Self::advance(lexer, lookahead, span);
             } else {
                 break;
             }
         }
-        self.expect(&Token::ParenClose)?;
+        Self::expect_token(lexer, lookahead, span, &Token::ParenClose)?;
 
-        let span = span.merge(self.span);
-        Ok(Expr::call(id, args, span))
+        let full_span = start_span.merge(*span);
+        Ok(Expr::call(id, args, full_span))
     }
 
-    fn climb(&mut self, mut lhs: Expr<'src>, min_prec: u8) -> ParseResult<'src> {
-        let mut prec = self.lookahead.precedence();
+    fn climb<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+        mut lhs: Expr,
+        min_prec: u8,
+    ) -> ParseResult {
+        let mut prec = lookahead.precedence();
         while prec >= min_prec {
             // Handle postfix unary operators
-            if self.lookahead.is_postfix_unary() {
-                let op = self.lookahead.clone();
-                let op_span = self.span;
-                self.advance();
-                prec = self.lookahead.precedence();
+            if lookahead.is_postfix_unary() {
+                let op = lookahead.clone();
+                let op_span = *span;
+                Self::advance(lexer, lookahead, span);
+                prec = lookahead.precedence();
 
                 let unary_op = UnOp::from_token(&op);
-                let span = lhs.span.merge(op_span);
-                lhs = Expr::unary(unary_op, lhs, span);
+                let full_span = lhs.span.merge(op_span);
+                lhs = Expr::unary(unary_op, lhs, full_span);
                 continue;
             }
 
-            let op = self.lookahead.clone();
+            let op = lookahead.clone();
 
-            self.advance();
-            let mut rhs = self.primary()?;
-            prec = self.lookahead.precedence();
+            Self::advance(lexer, lookahead, span);
+            let mut rhs = Self::primary(lexer, lookahead, span)?;
+            prec = lookahead.precedence();
 
             while prec > op.precedence()
-                || (self.lookahead.is_right_associative() && prec == op.precedence())
+                || (lookahead.is_right_associative() && prec == op.precedence())
             {
-                rhs = self.climb(rhs, prec)?;
-                prec = self.lookahead.precedence();
+                rhs = Self::climb(lexer, lookahead, span, rhs, prec)?;
+                prec = lookahead.precedence();
             }
 
-            let op = BinOp::from_token(&op);
-            let span = lhs.span.merge(rhs.span);
-            lhs = Expr::binary(op, lhs, rhs, span);
+            let binop = BinOp::from_token(&op);
+            let full_span = lhs.span.merge(rhs.span);
+            lhs = Expr::binary(binop, lhs, rhs, full_span);
         }
         Ok(lhs)
     }
 
-    fn advance(&mut self) {
-        self.lookahead = self.lexer.next();
-        self.span = self.lexer.span();
+    fn advance<'lex>(lexer: &mut Lexer<'lex>, lookahead: &mut Token<'lex>, span: &mut Span) {
+        *lookahead = lexer.next();
+        *span = lexer.span();
     }
 
-    fn accept(&mut self, t: &Token<'src>) -> bool {
-        if self.lookahead == *t {
-            self.advance();
-            true
+    fn expect_token<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+        expected: &Token<'lex>,
+    ) -> Result<(), ParseError> {
+        if lookahead == expected {
+            Self::advance(lexer, lookahead, span);
+            Ok(())
         } else {
-            false
+            Err(ParseError::UnexpectedToken {
+                message: format!(
+                    "unexpected token '{}', expected '{}'",
+                    lookahead.lexeme(),
+                    expected.lexeme()
+                ),
+                span: *span,
+            })
         }
-    }
-
-    fn expect(&mut self, tkn: &Token<'src>) -> Result<(), ParseError> {
-        if !self.accept(tkn) {
-            return Err(ParseError::UnexpectedToken {
-                found: self.lookahead.lexeme().to_string(),
-                expected: tkn.lexeme().to_string(),
-                span: self.span,
-            });
-        }
-        Ok(())
     }
 }

@@ -23,7 +23,7 @@ pub enum Token<'src> {
     LessEqual,    // <=
     Greater,      // >
     GreaterEqual, // >=
-    EOF,
+    Eof,
     Invalid(&'src str),
 }
 
@@ -73,7 +73,7 @@ impl<'src> Token<'src> {
             Token::LessEqual => Borrowed("<="),
             Token::Greater => Borrowed(">"),
             Token::GreaterEqual => Borrowed(">="),
-            Token::EOF => Borrowed("EOF"),
+            Token::Eof => Borrowed("EOF"),
             Token::Invalid(str) => match *str {
                 "\n" => Borrowed("\\n"),
                 "\r" => Borrowed("\\r"),
