@@ -13,8 +13,8 @@ pub enum UnOp {
     Fact,
 }
 
-impl UnOp {
-    pub fn from_token(token: &Token) -> Self {
+impl From<Token<'_>> for UnOp {
+    fn from(token: Token) -> Self {
         match token {
             Token::Minus => UnOp::Neg,
             Token::Bang => UnOp::Fact,
@@ -50,8 +50,8 @@ pub enum BinOp {
     GreaterEqual,
 }
 
-impl BinOp {
-    pub fn from_token(token: &Token) -> Self {
+impl From<Token<'_>> for BinOp {
+    fn from(token: Token) -> Self {
         match token {
             Token::Plus => BinOp::Add,
             Token::Minus => BinOp::Sub,

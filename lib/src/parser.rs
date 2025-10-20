@@ -1,6 +1,6 @@
 //! Recursive descent parser for mathematical expressions.
 
-use super::ast::{BinOp, Expr, UnOp};
+use super::ast::{Expr, UnOp};
 use super::error::ParseError;
 use super::lexer::Lexer;
 use crate::span::Span;
@@ -124,9 +124,8 @@ impl<'src> Parser<'src> {
                 self.advance();
                 prec = self.lookahead.precedence();
 
-                let unary_op = UnOp::from_token(&op);
                 let span = lhs.span.merge(op_span);
-                lhs = Expr::unary(unary_op, lhs, span);
+                lhs = Expr::unary(op.into(), lhs, span);
                 continue;
             }
 
@@ -143,9 +142,8 @@ impl<'src> Parser<'src> {
                 prec = self.lookahead.precedence();
             }
 
-            let op = BinOp::from_token(&op);
             let span = lhs.span.merge(rhs.span);
-            lhs = Expr::binary(op, lhs, rhs, span);
+            lhs = Expr::binary(op.into(), lhs, rhs, span);
         }
         Ok(lhs)
     }
