@@ -6,7 +6,7 @@ use super::lexer::Lexer;
 use crate::span::Span;
 use crate::token::Token;
 
-pub type ParseResult = Result<Expr, ParseError>;
+pub type ParseResult<'src> = Result<Expr<'src>, ParseError>;
 
 /// Recursive descent parser for mathematical expressions.
 ///
@@ -42,7 +42,7 @@ impl<'src> Parser<'src> {
     /// Parses the source into an abstract syntax tree.
     ///
     /// Returns `None` for empty input, or an expression AST on success.
-    pub fn parse(&mut self) -> Result<Option<Expr>, ParseError> {
+    pub fn parse(&mut self) -> Result<Option<Expr<'src>>, ParseError> {
         if self.lookahead == Token::Eof {
             return Ok(None);
         }
@@ -51,12 +51,12 @@ impl<'src> Parser<'src> {
         Ok(Some(expr))
     }
 
-    fn expression(&mut self) -> ParseResult {
+    fn expression(&mut self) -> ParseResult<'src> {
         let lhs = self.primary()?;
         self.climb(lhs, 1)
     }
 
-    fn primary(&mut self) -> ParseResult {
+    fn primary(&mut self) -> ParseResult<'src> {
         let span = self.span;
         match self.lookahead {
             Token::Number(n) => {
@@ -68,7 +68,7 @@ impl<'src> Parser<'src> {
                 if self.lookahead == Token::ParenOpen {
                     return self.call(id, span);
                 }
-                Ok(Expr::ident(id.to_string(), span))
+                Ok(Expr::ident(id, span))
             }
             Token::If => {
                 self.advance();
@@ -97,7 +97,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn call(&mut self, id: &'src str, span: Span) -> ParseResult {
+    fn call(&mut self, id: &'src str, span: Span) -> ParseResult<'src> {
         // assume lookahead is '('
         self.advance();
 
@@ -114,10 +114,10 @@ impl<'src> Parser<'src> {
         self.expect(&Token::ParenClose)?;
 
         let span = span.merge(self.span);
-        Ok(Expr::call(id.to_string(), args, span))
+        Ok(Expr::call(id, args, span))
     }
 
-    fn climb(&mut self, mut lhs: Expr, min_prec: u8) -> ParseResult {
+    fn climb(&mut self, mut lhs: Expr<'src>, min_prec: u8) -> ParseResult<'src> {
         let mut prec = self.lookahead.precedence();
         while prec >= min_prec {
             // Handle postfix unary operators
@@ -153,7 +153,7 @@ impl<'src> Parser<'src> {
         Ok(lhs)
     }
 
-    fn if_expr(&mut self, span: Span) -> ParseResult {
+    fn if_expr(&mut self, span: Span) -> ParseResult<'src> {
         // Expect: if(cond, then_branch, else_branch)
         // Self::expect_token(lexer, lookahead, span, &Token::ParenOpen)?;
         self.expect(&Token::ParenOpen)?;
@@ -197,7 +197,7 @@ impl<'src> Parser<'src> {
                     tkn.lexeme()
                 ),
                 span: self.span,
-            })
+            });
         }
         Ok(())
     }

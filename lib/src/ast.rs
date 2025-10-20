@@ -71,37 +71,40 @@ impl BinOp {
 
 /// Expression node in the AST with source location.
 #[derive(Debug, Clone)]
-pub struct Expr {
-    pub kind: ExprKind,
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
     pub span: Span,
 }
 
 /// Expression kind representing different types of expressions.
 #[derive(Debug, Clone)]
-pub enum ExprKind {
+pub enum ExprKind<'src> {
     /// Numeric literal
     Literal(Decimal),
     /// Identifier (constant or variable)
-    Ident { name: String },
+    Ident { name: &'src str },
     /// Unary operation
-    Unary { op: UnOp, expr: Box<Expr> },
+    Unary { op: UnOp, expr: Box<Expr<'src>> },
     /// Binary operation
     Binary {
         op: BinOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
+        left: Box<Expr<'src>>,
+        right: Box<Expr<'src>>,
     },
     /// Function call
-    Call { name: String, args: Vec<Expr> },
+    Call {
+        name: &'src str,
+        args: Vec<Expr<'src>>,
+    },
     /// Conditional expression
     If {
-        cond: Box<Expr>,
-        then_branch: Box<Expr>,
-        else_branch: Box<Expr>,
+        cond: Box<Expr<'src>>,
+        then_branch: Box<Expr<'src>>,
+        else_branch: Box<Expr<'src>>,
     },
 }
 
-impl Expr {
+impl<'src> Expr<'src> {
     pub fn literal(value: Decimal, span: Span) -> Self {
         Self {
             kind: ExprKind::Literal(value),
@@ -109,14 +112,14 @@ impl Expr {
         }
     }
 
-    pub fn ident(name: String, span: Span) -> Self {
+    pub fn ident(name: &'src str, span: Span) -> Self {
         Self {
             kind: ExprKind::Ident { name },
             span,
         }
     }
 
-    pub fn unary(op: UnOp, expr: Expr, span: Span) -> Self {
+    pub fn unary(op: UnOp, expr: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Unary {
                 op,
@@ -126,7 +129,7 @@ impl Expr {
         }
     }
 
-    pub fn binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Self {
+    pub fn binary(op: BinOp, left: Expr<'src>, right: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Binary {
                 op,
@@ -137,14 +140,19 @@ impl Expr {
         }
     }
 
-    pub fn call(name: String, args: Vec<Expr>, span: Span) -> Self {
+    pub fn call(name: &'src str, args: Vec<Expr<'src>>, span: Span) -> Self {
         Self {
             kind: ExprKind::Call { name, args },
             span,
         }
     }
 
-    pub fn if_expr(cond: Expr, then_branch: Expr, else_branch: Expr, span: Span) -> Self {
+    pub fn if_expr(
+        cond: Expr<'src>,
+        then_branch: Expr<'src>,
+        else_branch: Expr<'src>,
+        span: Span,
+    ) -> Self {
         Self {
             kind: ExprKind::If {
                 cond: Box::new(cond),
