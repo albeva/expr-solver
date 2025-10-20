@@ -3,7 +3,7 @@ name = "expr-solver-lib"
 version = "1.1.1"
 edition = "2024"
 authors = ["Albert Varaksin <albeva@me.com>"]
-description = "A simple math expression solver library"
+description = "Mathematical expression evaluator with bytecode compilation and configurable numeric precision (f64 or 128-bit Decimal)"
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/albeva/expr-solver"
@@ -14,7 +14,9 @@ categories = ["mathematics", "parser-implementations"]
 name = "expr_solver"
 
 [features]
-default = []
+default = ["f64-floats"]
+f64-floats = []
+decimal-precision = ["dep:rust_decimal", "dep:rust_decimal_macros"]
 serialization = ["dep:serde", "dep:bincode"]
 
 [dependencies]
@@ -23,8 +25,8 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 colored = "3.0.0"
 thiserror = "2.0.17"
 unicode-width = "0.2.2"
-rust_decimal_macros = { version = "1.39" }
-rust_decimal = { workspace = true }
+rust_decimal_macros = { version = "1.39", optional = true }
+rust_decimal = { workspace = true, optional = true }
 
 [dev-dependencies]
 indoc = "2.0.6"

@@ -1,8 +1,8 @@
 //! Abstract Syntax Tree for mathematical expressions.
 
+use crate::number::Number;
 use crate::span::Span;
 use crate::token::Token;
-use rust_decimal::Decimal;
 
 /// Unary operators: negation and factorial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,7 +80,7 @@ pub struct Expr<'src> {
 #[derive(Debug, Clone)]
 pub enum ExprKind<'src> {
     /// Numeric literal
-    Literal(Decimal),
+    Literal(Number),
     /// Identifier (constant or variable)
     Ident { name: &'src str },
     /// Unary operation
@@ -105,7 +105,7 @@ pub enum ExprKind<'src> {
 }
 
 impl<'src> Expr<'src> {
-    pub fn literal(value: Decimal, span: Span) -> Self {
+    pub fn literal(value: Number, span: Span) -> Self {
         Self {
             kind: ExprKind::Literal(value),
             span,

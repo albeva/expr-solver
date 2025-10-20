@@ -1,6 +1,5 @@
 use clap::{ArgAction, Parser};
-use expr_solver::{Program, SymTable, Symbol};
-use rust_decimal::prelude::*;
+use expr_solver::{Number, ParseNumber, Program, SymTable, Symbol};
 use std::path::PathBuf;
 
 /// A mathematical expression evaluator with compilation support
@@ -25,7 +24,7 @@ struct Args {
 
     /// Define constants (e.g., -D x=5.0)
     #[arg(short = 'D', long, value_parser = parse_key_val, action = ArgAction::Append)]
-    define: Vec<(String, f64)>,
+    define: Vec<(String, Number)>,
 
     /// List all available functions and constants
     #[arg(short = 't', long, conflicts_with_all=["expression", "expr", "input", "output", "assembly"])]
@@ -37,11 +36,14 @@ struct Args {
 }
 
 /// Parses a key=value pair for custom constant definitions.
-fn parse_key_val(s: &str) -> Result<(String, f64), Box<dyn std::error::Error + Send + Sync>> {
+fn parse_key_val(s: &str) -> Result<(String, Number), Box<dyn std::error::Error + Send + Sync>> {
     let pos = s
         .find('=')
         .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
-    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+    let key = s[..pos].parse()?;
+    let value = Number::parse_number(&s[pos + 1..])
+        .map_err(|e| format!("Failed to parse number: {}", e))?;
+    Ok((key, value))
 }
 
 fn main() {
@@ -91,7 +93,7 @@ fn run() -> Result<(), String> {
 }
 
 /// Creates a symbol table with standard library and user-defined constants.
-fn create_symbol_table(defines: &[(String, f64)]) -> Result<SymTable, String> {
+fn create_symbol_table(defines: &[(String, Number)]) -> Result<SymTable, String> {
     let mut table = SymTable::stdlib();
 
     for (name, value) in defines {
@@ -104,10 +106,7 @@ fn create_symbol_table(defines: &[(String, f64)]) -> Result<SymTable, String> {
         }
 
         table
-            .add_const(
-                name.clone(),
-                Decimal::from_f64(*value).unwrap_or(Decimal::ZERO),
-            )
+            .add_const(name.clone(), *value)
             .map_err(|e| format!("Failed to add constant '{}': {}", name, e))?;
     }
 

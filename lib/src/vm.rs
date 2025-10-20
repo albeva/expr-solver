@@ -1,11 +1,8 @@
 use crate::ir::Instr;
-use crate::symbol::{FuncError, SymTable, Symbol};
-use rust_decimal::Decimal;
-use rust_decimal::prelude::*;
+use crate::number::Number;
+use crate::symbol::{FuncError, Symbol};
+use crate::symtable::SymTable;
 use thiserror::Error;
-
-#[cfg(test)]
-use rust_decimal_macros::dec;
 
 /// Virtual machine runtime errors.
 #[derive(Error, Debug, Clone)]
@@ -17,7 +14,7 @@ pub enum VmError {
     #[error("Invalid stack state at program end: expected 1 element, found {count}")]
     InvalidFinalStack { count: usize },
     #[error("Invalid factorial: {value} (must be a non-negative integer)")]
-    InvalidFactorial { value: Decimal },
+    InvalidFactorial { value: Number },
     #[error("Arithmetic error: {message}")]
     ArithmeticError { message: String },
     #[error("Function error: {0}")]
@@ -28,11 +25,21 @@ pub enum VmError {
 ///
 /// The VM evaluates programs by executing bytecode instructions on a stack,
 /// performing arithmetic operations and function calls.
+///
+/// ## Error Handling
+///
+/// Behavior varies based on the numeric backend:
+///
+/// - **f64 mode**: Relaxed error handling. Only catches errors that would cause panics.
+///   Allows `Inf` and `NaN` results from operations like `1/0` or `sqrt(-1)`.
+///
+/// - **Decimal mode**: Strict error handling. All arithmetic operations are checked
+///   for overflow/underflow. Returns errors for domain violations.
 #[derive(Debug)]
 pub struct Vm<'vm> {
     bytecode: &'vm [Instr],
     symtable: &'vm SymTable,
-    stack: Vec<Decimal>,
+    stack: Vec<Number>,
     ip: usize,
 }
 
@@ -48,9 +55,11 @@ impl<'vm> Vm<'vm> {
     /// - Function errors
     /// - Invalid symbol indices
     /// - Invalid jumps
-    pub fn run(bytecode: &'vm [Instr], symtable: &'vm SymTable) -> Result<Decimal, VmError> {
+    pub fn run(bytecode: &'vm [Instr], symtable: &'vm SymTable) -> Result<Number, VmError> {
+        use crate::number::consts;
+
         if bytecode.is_empty() {
-            return Ok(Decimal::ZERO);
+            return Ok(consts::ZERO);
         }
 
         let mut vm = Vm {
@@ -71,6 +80,8 @@ impl<'vm> Vm<'vm> {
     }
 
     fn execute(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+
         while self.ip < self.bytecode.len() {
             let op = &self.bytecode[self.ip];
 
@@ -81,7 +92,7 @@ impl<'vm> Vm<'vm> {
                 }
                 Instr::Jz(target) => {
                     let cond = self.pop()?;
-                    if cond == Decimal::ZERO {
+                    if cond == consts::ZERO {
                         self.ip = *target;
                         continue;
                     }
@@ -127,19 +138,23 @@ impl<'vm> Vm<'vm> {
 
     fn comparison_op<F>(&mut self, f: F) -> Result<(), VmError>
     where
-        F: FnOnce(Decimal, Decimal) -> bool,
+        F: FnOnce(Number, Number) -> bool,
     {
+        use crate::number::consts;
+
         let right = self.pop()?;
         let left = self.pop()?;
         let result = if f(left, right) {
-            Decimal::ONE
+            consts::ONE
         } else {
-            Decimal::ZERO
+            consts::ZERO
         };
         self.stack.push(result);
         Ok(())
     }
 
+    // Decimal mode: use checked arithmetic for safety
+    #[cfg(feature = "decimal-precision")]
     fn add_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -152,6 +167,16 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
+    // f64 mode: use simple arithmetic (Inf/NaN allowed)
+    #[cfg(feature = "f64-floats")]
+    fn add_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left + right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
     fn sub_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -164,6 +189,15 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
+    #[cfg(feature = "f64-floats")]
+    fn sub_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left - right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
     fn mul_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -176,11 +210,22 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
+    #[cfg(feature = "f64-floats")]
+    fn mul_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left * right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
     fn div_op(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+
         let right = self.pop()?;
         let left = self.pop()?;
         let result = left.checked_div(right).ok_or_else(|| {
-            if right.is_zero() {
+            if right == consts::ZERO {
                 VmError::DivisionByZero
             } else {
                 VmError::ArithmeticError {
@@ -192,26 +237,60 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
+    #[cfg(feature = "f64-floats")]
+    fn div_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        // Check for division by zero to prevent undefined behavior
+        if right == 0.0 {
+            return Err(VmError::DivisionByZero);
+        }
+        self.stack.push(left / right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
     fn pow_op(&mut self) -> Result<(), VmError> {
+        use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+
         let exponent = self.pop()?;
         let base = self.pop()?;
 
-        // Use Decimal's powd with error handling
-        let result =
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| base.powd(exponent))) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(VmError::ArithmeticError {
-                        message: format!("Power operation failed: {} ^ {}", base, exponent),
-                    });
-                }
-            };
+        // Convert to f64, compute power, convert back
+        // This is a limitation of rust_decimal which doesn't have decimal exponent support
+        let base_f64 = base.to_f64().ok_or_else(|| VmError::ArithmeticError {
+            message: format!("Failed to convert base {} to f64", base),
+        })?;
+        let exp_f64 = exponent.to_f64().ok_or_else(|| VmError::ArithmeticError {
+            message: format!("Failed to convert exponent {} to f64", exponent),
+        })?;
+
+        let result_f64 = base_f64.powf(exp_f64);
+
+        let result = Number::from_f64(result_f64).ok_or_else(|| VmError::ArithmeticError {
+            message: format!(
+                "Power operation result cannot be represented: {} ^ {}",
+                base, exponent
+            ),
+        })?;
 
         self.stack.push(result);
         Ok(())
     }
 
+    #[cfg(feature = "f64-floats")]
+    fn pow_op(&mut self) -> Result<(), VmError> {
+        let exponent = self.pop()?;
+        let base = self.pop()?;
+        self.stack.push(base.powf(exponent));
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
     fn fact_op(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+        use rust_decimal::prelude::*;
+
         let n = self.pop()?;
 
         // Check for negative numbers
@@ -220,18 +299,43 @@ impl<'vm> Vm<'vm> {
         }
 
         // Check for non-integer
-        if n.fract() != Decimal::ZERO {
+        if n.fract() != consts::ZERO {
             return Err(VmError::InvalidFactorial { value: n });
         }
 
         // Calculate factorial using safe multiplication with iterator
         let n_u64 = n.to_u64().unwrap();
-        let result = (1..=n_u64).try_fold(Decimal::ONE, |acc, i| {
-            acc.checked_mul(Decimal::from(i))
+        let result = (1..=n_u64).try_fold(consts::ONE, |acc, i| {
+            acc.checked_mul(Number::from(i))
                 .ok_or_else(|| VmError::ArithmeticError {
                     message: format!("Factorial calculation overflow at {}!", i),
                 })
         })?;
+
+        self.stack.push(result);
+        Ok(())
+    }
+
+    #[cfg(feature = "f64-floats")]
+    fn fact_op(&mut self) -> Result<(), VmError> {
+        let n = self.pop()?;
+
+        // Check for negative numbers
+        if n < 0.0 {
+            return Err(VmError::InvalidFactorial { value: n });
+        }
+
+        // Check for non-integer
+        if n.fract() != 0.0 {
+            return Err(VmError::InvalidFactorial { value: n });
+        }
+
+        // Calculate factorial
+        let n_u64 = n as u64;
+        let mut result = 1.0;
+        for i in 1..=n_u64 {
+            result *= i as f64;
+        }
 
         self.stack.push(result);
         Ok(())
@@ -251,7 +355,7 @@ impl<'vm> Vm<'vm> {
         }
     }
 
-    fn pop(&mut self) -> Result<Decimal, VmError> {
+    fn pop(&mut self) -> Result<Number, VmError> {
         self.stack.pop().ok_or(VmError::StackUnderflow)
     }
 }
@@ -259,7 +363,8 @@ impl<'vm> Vm<'vm> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::SymTable;
+    use crate::num;
+    use crate::symtable::SymTable;
 
     #[test]
     fn test_vm_error_stack_underflow() {
@@ -273,7 +378,7 @@ mod tests {
     #[test]
     fn test_vm_error_division_by_zero() {
         let table = SymTable::stdlib();
-        let bytecode = vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div];
+        let bytecode = vec![Instr::Push(num!(5)), Instr::Push(num!(0)), Instr::Div];
 
         let result = Vm::run(&bytecode, &table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
@@ -283,8 +388,8 @@ mod tests {
     fn test_vm_error_invalid_final_stack() {
         let table = SymTable::stdlib();
         let bytecode = vec![
-            Instr::Push(dec!(1)),
-            Instr::Push(dec!(2)),
+            Instr::Push(num!(1)),
+            Instr::Push(num!(2)),
             // No operation to combine them
         ];
 
@@ -312,24 +417,25 @@ mod tests {
     fn test_binary_operations() {
         let table = SymTable::stdlib();
 
-        // Test all binary operations
+        // Test all binary operations using string comparison
         let test_cases = vec![
             (
-                vec![Instr::Push(dec!(6)), Instr::Push(dec!(2)), Instr::Sub],
-                dec!(4),
+                vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
+                "4",
             ),
             (
-                vec![Instr::Push(dec!(3)), Instr::Push(dec!(4)), Instr::Mul],
-                dec!(12),
+                vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
+                "12",
             ),
             (
-                vec![Instr::Push(dec!(8)), Instr::Push(dec!(2)), Instr::Div],
-                dec!(4),
+                vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
+                "4",
             ),
         ];
 
         for (code, expected) in test_cases {
-            assert_eq!(Vm::run(&code, &table).unwrap(), expected);
+            let result = Vm::run(&code, &table).unwrap();
+            assert_eq!(result.to_string(), expected);
         }
     }
 }

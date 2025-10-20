@@ -3,4 +3,4 @@ members = ["lib", "bin"]
 resolver = "2"
 
 [workspace.dependencies]
-rust_decimal = { version = "1.39", features = ["serde-bincode", "maths", "macros"] }
+rust_decimal = { version = "1.39", features = ["serde-bincode", "maths"] }
