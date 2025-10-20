@@ -137,8 +137,12 @@ expr-solver -e "2+3*4" -o expr.bin
 # Execute compiled binary
 expr-solver -i expr.bin
 
-# View assembly
+# View assembly from expression or file
 expr-solver -e "2+3" -a
+expr-solver -i expr.bin -a
+
+# Recompile bytecode (e.g., version migration)
+expr-solver -i old.bin -o new.bin
 
 # List available functions and constants
 expr-solver -t

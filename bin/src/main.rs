@@ -36,6 +36,7 @@ struct Args {
     assembly: bool,
 }
 
+/// Parses a key=value pair for custom constant definitions.
 fn parse_key_val(s: &str) -> Result<(String, f64), Box<dyn std::error::Error + Send + Sync>> {
     let pos = s
         .find('=')
@@ -49,6 +50,7 @@ fn main() {
     }
 }
 
+/// Main execution logic: parses arguments, loads program, and executes requested action.
 fn run() -> Result<(), String> {
     let args = Args::parse();
 
@@ -63,18 +65,15 @@ fn run() -> Result<(), String> {
 
     // Load input from either expression or file
     let program = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        Program::new_from_source(expr)
-            .map_err(|err| err.to_string())?
-            .link(table)
-            .map_err(|err| err.to_string())?
+        Program::new_from_source(expr).map_err(|err| err.to_string())?
     } else if let Some(file) = &args.input {
-        Program::new_from_file(file.to_string_lossy().as_ref())
-            .map_err(|err| err.to_string())?
-            .link(table)
-            .map_err(|err| err.to_string())?
+        Program::new_from_file(file.to_string_lossy().as_ref()).map_err(|err| err.to_string())?
     } else {
         return Err("no input".to_string());
     };
+
+    // Link the program with the symbol table
+    let program = program.link(table).map_err(|err| err.to_string())?;
 
     // Act on the loaded program
     if args.assembly {
@@ -91,6 +90,7 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
+/// Creates a symbol table with standard library and user-defined constants.
 fn create_symbol_table(defines: &[(String, f64)]) -> Result<SymTable, String> {
     let mut table = SymTable::stdlib();
 
@@ -114,6 +114,7 @@ fn create_symbol_table(defines: &[(String, f64)]) -> Result<SymTable, String> {
     Ok(table)
 }
 
+/// Prints all available constants and functions in the symbol table.
 fn list_symbol_table(table: &SymTable) {
     println!("Available constants:");
     for symbol in table.symbols() {
