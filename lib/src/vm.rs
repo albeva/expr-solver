@@ -73,28 +73,15 @@ impl Vm {
             // Check for jump instructions and handle them specially
             match op {
                 Instr::Jmp(target) => {
-                    if *target > bytecode.len() {
-                        return Err(VmError::InvalidJump {
-                            target: *target,
-                            size: bytecode.len(),
-                        });
-                    }
                     ip = *target;
                     continue;
                 }
                 Instr::Jz(target) => {
-                    if *target > bytecode.len() {
-                        return Err(VmError::InvalidJump {
-                            target: *target,
-                            size: bytecode.len(),
-                        });
-                    }
                     let cond = Self::pop(&mut stack)?;
                     if cond == Decimal::ZERO {
                         ip = *target;
                         continue;
                     }
-                    // Otherwise, fall through to next instruction
                 }
                 _ => {
                     self.execute_instruction(op, table, &mut stack)?;
