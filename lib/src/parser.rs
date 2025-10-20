@@ -70,10 +70,7 @@ impl<'src> Parser<'src> {
                 }
                 Ok(Expr::ident(id, span))
             }
-            Token::If => {
-                self.advance();
-                self.if_expr(span)
-            }
+            Token::If => self.if_expr(span),
             Token::Minus => {
                 self.advance();
                 let expr = self.primary()?;
@@ -155,6 +152,10 @@ impl<'src> Parser<'src> {
 
     fn if_expr(&mut self, span: Span) -> ParseResult<'src> {
         // Expect: if(cond, then_branch, else_branch)
+
+        // assume lookahead is 'if'
+        self.advance();
+
         // Self::expect_token(lexer, lookahead, span, &Token::ParenOpen)?;
         self.expect(&Token::ParenOpen)?;
 
