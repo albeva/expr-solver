@@ -466,7 +466,7 @@ impl<'src> Program<'src, Linked> {
 
     /// Executes the program and returns the result.
     pub fn execute(&self) -> Result<Decimal, VmError> {
-        Vm.run_bytecode(&self.state.bytecode, &self.state.symtable)
+        Vm::run(&self.state.bytecode, &self.state.symtable)
     }
 
     /// Returns a reference to the symbol table.

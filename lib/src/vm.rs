@@ -44,11 +44,16 @@ pub enum VmError {
 ///
 /// The VM evaluates programs by executing bytecode instructions on a stack,
 /// performing arithmetic operations and function calls.
-#[derive(Debug, Default)]
-pub struct Vm;
+#[derive(Debug)]
+pub struct Vm<'vm> {
+    bytecode: &'vm [Instr],
+    symtable: &'vm SymTable,
+    stack: Vec<Decimal>,
+    ip: usize,
+}
 
-impl Vm {
-    /// Executes bytecode directly and returns the result.
+impl<'vm> Vm<'vm> {
+    /// Executes bytecode and returns the result.
     ///
     /// # Errors
     ///
@@ -59,62 +64,69 @@ impl Vm {
     /// - Function errors
     /// - Invalid symbol indices
     /// - Invalid jumps
-    pub fn run_bytecode(&self, bytecode: &[Instr], table: &SymTable) -> Result<Decimal, VmError> {
+    pub fn run(bytecode: &'vm [Instr], symtable: &'vm SymTable) -> Result<Decimal, VmError> {
         if bytecode.is_empty() {
             return Ok(Decimal::ZERO);
         }
 
-        let mut stack: Vec<Decimal> = Vec::new();
-        let mut ip = 0; // Instruction pointer
+        let mut vm = Vm {
+            bytecode,
+            symtable,
+            stack: Vec::new(),
+            ip: 0,
+        };
 
-        while ip < bytecode.len() {
-            let op = &bytecode[ip];
+        vm.execute()?;
+
+        match vm.stack.as_slice() {
+            [result] => Ok(*result),
+            _ => Err(VmError::InvalidFinalStack {
+                count: vm.stack.len(),
+            }),
+        }
+    }
+
+    fn execute(&mut self) -> Result<(), VmError> {
+        while self.ip < self.bytecode.len() {
+            let op = &self.bytecode[self.ip];
 
             // Check for jump instructions and handle them specially
             match op {
                 Instr::Jmp(target) => {
-                    ip = *target;
+                    self.ip = *target;
                     continue;
                 }
                 Instr::Jz(target) => {
-                    let cond = Self::pop(&mut stack)?;
+                    let cond = self.pop()?;
                     if cond == Decimal::ZERO {
-                        ip = *target;
+                        self.ip = *target;
                         continue;
                     }
                 }
                 _ => {
-                    self.execute_instruction(op, table, &mut stack)?;
+                    self.execute_instruction(op)?;
                 }
             }
 
-            ip += 1;
+            self.ip += 1;
         }
-
-        match stack.as_slice() {
-            [result] => Ok(*result),
-            _ => Err(VmError::InvalidFinalStack { count: stack.len() }),
-        }
+        Ok(())
     }
 
-    fn execute_instruction(
-        &self,
-        op: &Instr,
-        table: &SymTable,
-        stack: &mut Vec<Decimal>,
-    ) -> Result<(), VmError> {
+    fn execute_instruction(&mut self, op: &Instr) -> Result<(), VmError> {
         match op {
             Instr::Push(v) => {
-                stack.push(*v);
+                self.stack.push(*v);
                 Ok(())
             }
             Instr::Load(idx) => {
-                let sym = table
+                let sym = self
+                    .symtable
                     .get_by_index(*idx)
                     .ok_or(VmError::InvalidSymbolIndex(*idx))?;
                 match sym {
                     Symbol::Const { value, .. } => {
-                        stack.push(*value);
+                        self.stack.push(*value);
                         Ok(())
                     }
                     _ => Err(VmError::InvalidLoad {
@@ -123,90 +135,91 @@ impl Vm {
                 }
             }
             Instr::Neg => {
-                let v = Self::pop(stack)?;
-                stack.push(-v);
+                let v = self.pop()?;
+                self.stack.push(-v);
                 Ok(())
             }
-            Instr::Add => self.add_op(stack),
-            Instr::Sub => self.sub_op(stack),
-            Instr::Mul => self.mul_op(stack),
-            Instr::Div => self.div_op(stack),
-            Instr::Pow => self.pow_op(stack),
-            Instr::Fact => self.fact_op(stack),
+            Instr::Add => self.add_op(),
+            Instr::Sub => self.sub_op(),
+            Instr::Mul => self.mul_op(),
+            Instr::Div => self.div_op(),
+            Instr::Pow => self.pow_op(),
+            Instr::Fact => self.fact_op(),
             Instr::Call(idx, argc) => {
-                let sym = table
+                let sym = self
+                    .symtable
                     .get_by_index(*idx)
                     .ok_or(VmError::InvalidSymbolIndex(*idx))?;
-                self.call_op(sym, *argc, stack)
+                self.call_op(sym, *argc)
             }
             // Comparison operators
-            Instr::Equal => self.comparison_op(stack, |a, b| a == b),
-            Instr::NotEqual => self.comparison_op(stack, |a, b| a != b),
-            Instr::Less => self.comparison_op(stack, |a, b| a < b),
-            Instr::LessEqual => self.comparison_op(stack, |a, b| a <= b),
-            Instr::Greater => self.comparison_op(stack, |a, b| a > b),
-            Instr::GreaterEqual => self.comparison_op(stack, |a, b| a >= b),
-            // Jump instructions are handled in run_bytecode()
+            Instr::Equal => self.comparison_op(|a, b| a == b),
+            Instr::NotEqual => self.comparison_op(|a, b| a != b),
+            Instr::Less => self.comparison_op(|a, b| a < b),
+            Instr::LessEqual => self.comparison_op(|a, b| a <= b),
+            Instr::Greater => self.comparison_op(|a, b| a > b),
+            Instr::GreaterEqual => self.comparison_op(|a, b| a >= b),
+            // Jump instructions are handled in execute()
             Instr::Jmp(_) | Instr::Jz(_) => {
-                unreachable!("Jump instructions should be handled in run_bytecode")
+                unreachable!("Jump instructions should be handled in execute")
             }
         }
     }
 
-    fn comparison_op<F>(&self, stack: &mut Vec<Decimal>, f: F) -> Result<(), VmError>
+    fn comparison_op<F>(&mut self, f: F) -> Result<(), VmError>
     where
         F: FnOnce(Decimal, Decimal) -> bool,
     {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = if f(left, right) {
             Decimal::ONE
         } else {
             Decimal::ZERO
         };
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn add_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    fn add_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_add(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Addition overflow: {} + {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn sub_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    fn sub_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_sub(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Subtraction overflow: {} - {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn mul_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    fn mul_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_mul(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Multiplication overflow: {} * {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn div_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    fn div_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left.checked_div(right).ok_or_else(|| {
             if right.is_zero() {
                 VmError::DivisionByZero
@@ -216,13 +229,13 @@ impl Vm {
                 }
             }
         })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn pow_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let exponent = Self::pop(stack)?;
-        let base = Self::pop(stack)?;
+    fn pow_op(&mut self) -> Result<(), VmError> {
+        let exponent = self.pop()?;
+        let base = self.pop()?;
 
         // Use Decimal's powd with error handling
         let result =
@@ -235,12 +248,12 @@ impl Vm {
                 }
             };
 
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn fact_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let n = Self::pop(stack)?;
+    fn fact_op(&mut self) -> Result<(), VmError> {
+        let n = self.pop()?;
 
         // Check for negative numbers
         if n.is_sign_negative() {
@@ -261,11 +274,11 @@ impl Vm {
                 })
         })?;
 
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn call_op(&self, sym: &Symbol, argc: usize, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
+    fn call_op(&mut self, sym: &Symbol, argc: usize) -> Result<(), VmError> {
         match sym {
             Symbol::Func {
                 name,
@@ -283,19 +296,19 @@ impl Vm {
                 }
 
                 // Check if we have enough values on the stack
-                if stack.len() < argc {
+                if self.stack.len() < argc {
                     return Err(VmError::CallStackUnderflow {
                         function_name: name.to_string(),
                         expected: argc,
-                        found: stack.len(),
+                        found: self.stack.len(),
                     });
                 }
 
-                let args_start = stack.len() - argc;
-                let args = &stack[args_start..];
+                let args_start = self.stack.len() - argc;
+                let args = &self.stack[args_start..];
                 let result = callback(args).map_err(VmError::FunctionError)?;
-                stack.truncate(args_start);
-                stack.push(result);
+                self.stack.truncate(args_start);
+                self.stack.push(result);
                 Ok(())
             }
             Symbol::Const { .. } => Err(VmError::InvalidCall {
@@ -304,8 +317,8 @@ impl Vm {
         }
     }
 
-    fn pop(stack: &mut Vec<Decimal>) -> Result<Decimal, VmError> {
-        stack.pop().ok_or(VmError::StackUnderflow)
+    fn pop(&mut self) -> Result<Decimal, VmError> {
+        self.stack.pop().ok_or(VmError::StackUnderflow)
     }
 }
 
@@ -316,27 +329,24 @@ mod tests {
 
     #[test]
     fn test_vm_error_stack_underflow() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![Instr::Add]; // No values on stack
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(result, Err(VmError::StackUnderflow)));
     }
 
     #[test]
     fn test_vm_error_division_by_zero() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div];
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
     }
 
     #[test]
     fn test_vm_error_invalid_final_stack() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let bytecode = vec![
             Instr::Push(dec!(1)),
@@ -344,7 +354,7 @@ mod tests {
             // No operation to combine them
         ];
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidFinalStack { count: 2 })
@@ -353,13 +363,12 @@ mod tests {
 
     #[test]
     fn test_vm_error_invalid_load() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
         let bytecode = vec![Instr::Load(sin_idx)]; // Trying to load a function as constant
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidLoad { symbol_name: _ })
@@ -368,13 +377,12 @@ mod tests {
 
     #[test]
     fn test_vm_error_invalid_call() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let (pi_idx, _) = table.get_with_index("pi").unwrap();
 
         let bytecode = vec![Instr::Call(pi_idx, 0)]; // Trying to call a constant as function
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::InvalidCall { symbol_name: _ })
@@ -383,13 +391,12 @@ mod tests {
 
     #[test]
     fn test_vm_error_call_stack_underflow() {
-        let vm = Vm;
         let table = SymTable::stdlib();
         let (sin_idx, _) = table.get_with_index("sin").unwrap();
 
         let bytecode = vec![Instr::Call(sin_idx, 0)]; // No arguments for sin function
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &table);
         assert!(matches!(
             result,
             Err(VmError::CallStackUnderflow {
@@ -438,7 +445,6 @@ mod tests {
 
     #[test]
     fn test_binary_operations() {
-        let vm = Vm;
         let table = SymTable::stdlib();
 
         // Test all binary operations
@@ -458,7 +464,7 @@ mod tests {
         ];
 
         for (code, expected) in test_cases {
-            assert_eq!(vm.run_bytecode(&code, &table).unwrap(), expected);
+            assert_eq!(Vm::run(&code, &table).unwrap(), expected);
         }
     }
 }
