@@ -414,22 +414,10 @@ fn test_if_expression_nested() {
     assert_eq!(eval_ok("if(if(0, 1, 0), 100, 200)"), dec!(200));
 
     // Multiple levels of nesting
-    assert_eq!(
-        eval_ok("if(1, if(1, if(1, 1, 2), 3), 4)"),
-        dec!(1)
-    );
-    assert_eq!(
-        eval_ok("if(1, if(1, if(0, 1, 2), 3), 4)"),
-        dec!(2)
-    );
-    assert_eq!(
-        eval_ok("if(1, if(0, if(1, 1, 2), 3), 4)"),
-        dec!(3)
-    );
-    assert_eq!(
-        eval_ok("if(0, if(1, if(1, 1, 2), 3), 4)"),
-        dec!(4)
-    );
+    assert_eq!(eval_ok("if(1, if(1, if(1, 1, 2), 3), 4)"), dec!(1));
+    assert_eq!(eval_ok("if(1, if(1, if(0, 1, 2), 3), 4)"), dec!(2));
+    assert_eq!(eval_ok("if(1, if(0, if(1, 1, 2), 3), 4)"), dec!(3));
+    assert_eq!(eval_ok("if(0, if(1, if(1, 1, 2), 3), 4)"), dec!(4));
 }
 
 #[test]
