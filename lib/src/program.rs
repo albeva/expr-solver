@@ -486,11 +486,63 @@ impl<'src> Program<'src, Linked> {
 
     /// Returns a human-readable assembly representation of the program.
     pub fn get_assembly(&self) -> String {
-        Self::format_assembly(
-            &self.state.version,
-            &self.state.bytecode,
-            &self.state.symtable,
-        )
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        out += &format!("; VERSION {}\n", self.state.version)
+            .bright_black()
+            .to_string();
+
+        for (i, instr) in self.state.bytecode.iter().enumerate() {
+            let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
+            let line = match instr {
+                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
+                Instr::Load(idx) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .unwrap_or("???");
+                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
+                }
+                Instr::Neg => format!("{}", "NEG".magenta()),
+                Instr::Add => format!("{}", "ADD".magenta()),
+                Instr::Sub => format!("{}", "SUB".magenta()),
+                Instr::Mul => format!("{}", "MUL".magenta()),
+                Instr::Div => format!("{}", "DIV".magenta()),
+                Instr::Pow => format!("{}", "POW".magenta()),
+                Instr::Fact => format!("{}", "FACT".magenta()),
+                Instr::Call(idx, argc) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .unwrap_or("???");
+                    format!(
+                        "{} {} args: {}",
+                        "CALL".magenta(),
+                        sym_name.cyan(),
+                        argc.to_string().bright_blue()
+                    )
+                }
+                Instr::Equal => format!("{}", "EQ".magenta()),
+                Instr::NotEqual => format!("{}", "NEQ".magenta()),
+                Instr::Less => format!("{}", "LT".magenta()),
+                Instr::LessEqual => format!("{}", "LTE".magenta()),
+                Instr::Greater => format!("{}", "GT".magenta()),
+                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
+                Instr::Jmp(target) => {
+                    format!("{} {}", "JMP".magenta(), format!("{:04X}", target).yellow())
+                }
+                Instr::Jz(target) => {
+                    format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
+                }
+            };
+            let _ = writeln!(out, "{}", line);
+        }
+        out
     }
 
     /// Converts the program to bytecode bytes.
@@ -554,60 +606,5 @@ impl<'src> Program<'src, Linked> {
         let bytecode = self.to_bytecode()?;
         std::fs::write(path, bytecode)?;
         Ok(())
-    }
-
-    // ========================================================================
-    // Private helpers
-    // ========================================================================
-
-    /// Formats bytecode as human-readable assembly.
-    fn format_assembly(version: &str, bytecode: &[Instr], table: &SymTable) -> String {
-        use std::fmt::Write as _;
-
-        let mut out = String::new();
-        out += &format!("; VERSION {}\n", version)
-            .bright_black()
-            .to_string();
-
-        for (i, instr) in bytecode.iter().enumerate() {
-            let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
-            let line = match instr {
-                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
-                Instr::Load(idx) => {
-                    let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
-                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
-                }
-                Instr::Neg => format!("{}", "NEG".magenta()),
-                Instr::Add => format!("{}", "ADD".magenta()),
-                Instr::Sub => format!("{}", "SUB".magenta()),
-                Instr::Mul => format!("{}", "MUL".magenta()),
-                Instr::Div => format!("{}", "DIV".magenta()),
-                Instr::Pow => format!("{}", "POW".magenta()),
-                Instr::Fact => format!("{}", "FACT".magenta()),
-                Instr::Call(idx, argc) => {
-                    let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
-                    format!(
-                        "{} {} args: {}",
-                        "CALL".magenta(),
-                        sym_name.cyan(),
-                        argc.to_string().bright_blue()
-                    )
-                }
-                Instr::Equal => format!("{}", "EQ".magenta()),
-                Instr::NotEqual => format!("{}", "NEQ".magenta()),
-                Instr::Less => format!("{}", "LT".magenta()),
-                Instr::LessEqual => format!("{}", "LTE".magenta()),
-                Instr::Greater => format!("{}", "GT".magenta()),
-                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
-                Instr::Jmp(target) => {
-                    format!("{} {}", "JMP".magenta(), format!("{:04X}", target).yellow())
-                }
-                Instr::Jz(target) => {
-                    format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
-                }
-            };
-            let _ = writeln!(out, "{}", line);
-        }
-        out
     }
 }
