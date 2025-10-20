@@ -1,6 +1,6 @@
 //! Bytecode instruction definitions for the virtual machine.
 
-use rust_decimal::Decimal;
+use crate::number::Number;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum Instr {
-    Push(Decimal),
+    Push(Number),
     Load(usize), // Index into SymTable
     Neg,
     Add,

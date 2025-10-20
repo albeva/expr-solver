@@ -1,10 +1,10 @@
+use crate::number::Number;
 use Cow::{Borrowed, Owned};
-use rust_decimal::Decimal;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
-    Number(Decimal),
+    Number(Number),
     Ident(&'src str),
     If,
     Plus,
@@ -56,7 +56,7 @@ impl<'src> Token<'src> {
 
     pub fn lexeme(&self) -> Cow<'src, str> {
         match self {
-            Token::Number(decimal) => Owned(decimal.to_string()),
+            Token::Number(number) => Owned(number.to_string()),
             Token::Ident(str) => Borrowed(str),
             Token::If => Borrowed("if"),
             Token::Plus => Borrowed("+"),

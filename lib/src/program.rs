@@ -5,11 +5,11 @@ use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use crate::ir::Instr;
+use crate::number::Number;
 use crate::span::{Span, SpanError};
-use crate::symbol::{SymTable, Symbol};
+use crate::symbol::{Symbol, SymTable};
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
-use rust_decimal::Decimal;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
@@ -44,19 +44,18 @@ pub enum ProgramOrigin {
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{Program, SymTable};
-/// use rust_decimal_macros::dec;
+/// use expr_solver::{Program, SymTable, Number, ParseNumber};
 ///
 /// // Compile from source
 /// let program = Program::new_from_source("x * 2 + 1").unwrap();
 ///
 /// // Link with symbol table
 /// let mut table = SymTable::new();
-/// table.add_const("x", dec!(5)).unwrap();
+/// table.add_const("x", Number::parse_number("5").unwrap()).unwrap();
 /// let linked = program.link(table).unwrap();
 ///
 /// // Execute
-/// assert_eq!(linked.execute().unwrap(), dec!(11));
+/// assert_eq!(linked.execute().unwrap().to_string(), "11");
 /// ```
 #[derive(Debug)]
 pub struct Program<'src, State> {
@@ -465,7 +464,7 @@ impl<'src> Program<'src, Linked> {
     // ========================================================================
 
     /// Executes the program and returns the result.
-    pub fn execute(&self) -> Result<Decimal, VmError> {
+    pub fn execute(&self) -> Result<Number, VmError> {
         Vm::run(&self.state.bytecode, &self.state.symtable)
     }
 

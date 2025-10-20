@@ -1,43 +1,33 @@
+//! Decimal-specific symbol table implementation.
+//!
+//! This module provides high-precision 128-bit Decimal arithmetic with checked operations.
+
+use super::{FuncError, Symbol, SymTable};
+use crate::number::Number;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
-use std::borrow::Cow;
 use std::panic;
-use thiserror::Error;
-
-/// Errors that can occur during function evaluation.
-#[derive(Error, Debug, Clone)]
-pub enum FuncError {
-    #[error("Conversion error: failed to convert Decimal to f64")]
-    DecimalToF64Conversion,
-    #[error("Conversion error: failed to convert f64 result back to Decimal")]
-    F64ToDecimalConversion,
-    #[error("Square root of negative number: {value}")]
-    NegativeSqrt { value: Decimal },
-    #[error("Domain error in function '{function}': invalid input {input}")]
-    DomainError { function: String, input: Decimal },
-    #[error("Math error: {message}")]
-    MathError { message: String },
-}
 
 /// Helper function for single-argument f64 calculations
-fn f64_calc_1<F>(args: &[Decimal], func: F) -> Result<Decimal, FuncError>
+/// Used for inverse trig functions that don't have native Decimal implementations
+fn f64_calc_1<F>(args: &[Number], func: F) -> Result<Number, FuncError>
 where
     F: Fn(f64) -> f64,
 {
-    let arg = args[0].to_f64().ok_or(FuncError::DecimalToF64Conversion)?;
+    let arg = args[0].to_f64().ok_or(FuncError::ToF64Conversion)?;
     let result = func(arg);
-    Decimal::from_f64(result).ok_or(FuncError::F64ToDecimalConversion)
+    Decimal::from_f64(result).ok_or(FuncError::FromF64Conversion)
 }
 
 /// Helper function for two-argument f64 calculations
-fn f64_calc_2<F>(args: &[Decimal], func: F) -> Result<Decimal, FuncError>
+fn f64_calc_2<F>(args: &[Number], func: F) -> Result<Number, FuncError>
 where
     F: Fn(f64, f64) -> f64,
 {
-    let arg1 = args[0].to_f64().ok_or(FuncError::DecimalToF64Conversion)?;
-    let arg2 = args[1].to_f64().ok_or(FuncError::DecimalToF64Conversion)?;
+    let arg1 = args[0].to_f64().ok_or(FuncError::ToF64Conversion)?;
+    let arg2 = args[1].to_f64().ok_or(FuncError::ToF64Conversion)?;
     let result = func(arg1, arg2);
-    Decimal::from_f64(result).ok_or(FuncError::F64ToDecimalConversion)
+    Decimal::from_f64(result).ok_or(FuncError::FromF64Conversion)
 }
 
 /// Cube root using Newton-Raphson iteration
@@ -77,92 +67,12 @@ fn cbrt_decimal(x: Decimal) -> Decimal {
     guess * sign
 }
 
-/// Errors that can occur during symbol table operations.
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
-pub enum SymbolError {
-    /// A symbol with this name already exists in the table.
-    #[error("Duplicate symbol definition: '{0}'")]
-    DuplicateSymbol(String),
-}
-
-/// A symbol representing either a constant or function.
-///
-/// Symbols are stored in a [`SymTable`] and referenced during evaluation.
-#[derive(Debug, Clone)]
-pub enum Symbol {
-    /// Named constant (e.g., `pi`).
-    Const {
-        name: Cow<'static, str>,
-        value: Decimal,
-        description: Option<Cow<'static, str>>,
-    },
-    /// Function with specified arity and callback.
-    Func {
-        name: Cow<'static, str>,
-        /// Minimum number of arguments
-        args: usize,
-        /// Whether the function accepts additional arguments
-        variadic: bool,
-        callback: fn(&[Decimal]) -> Result<Decimal, FuncError>,
-        description: Option<Cow<'static, str>>,
-    },
-}
-
-impl Symbol {
-    /// Returns the name of the symbol.
-    pub fn name(&self) -> &str {
-        match self {
-            Symbol::Const { name, .. } => name,
-            Symbol::Func { name, .. } => name,
-        }
-    }
-
-    /// Returns the description of the symbol, if available.
-    pub fn description(&self) -> Option<&str> {
-        match self {
-            Symbol::Const { description, .. } => description.as_deref(),
-            Symbol::Func { description, .. } => description.as_deref(),
-        }
-    }
-}
-
-/// Symbol table containing constants and functions.
-///
-/// The table stores mathematical constants like `pi` and functions like `sin`.
-/// Symbol lookups are case-insensitive.
-///
-/// # Examples
-///
-/// ```
-/// use expr_solver::SymTable;
-/// use rust_decimal_macros::dec;
-///
-/// let mut table = SymTable::stdlib();
-/// table.add_const("x", dec!(42)).unwrap();
-/// ```
-#[derive(Debug, Default, Clone)]
-pub struct SymTable {
-    symbols: Vec<Symbol>,
-}
-
+#[cfg(feature = "decimal-precision")]
 impl SymTable {
-    /// Creates an empty symbol table.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Creates a symbol table with the standard library.
+    /// Creates a symbol table with the standard library for Decimal precision.
     ///
     /// Most functions use native 128-bit `Decimal` arithmetic for high precision.
     /// Inverse trig functions (asin, acos, atan, atan2) use f64 internally.
-    ///
-    /// ## Constants
-    /// - `pi` - π (3.14159...)
-    /// - `e` - Euler's number (2.71828...)
-    /// - `tau` - 2π (6.28318...)
-    /// - `ln2` - Natural logarithm of 2
-    /// - `ln10` - Natural logarithm of 10
-    /// - `sqrt2` - Square root of 2
     ///
     /// ## Fixed arity functions
     /// - `sin(x)` - Sine
@@ -220,17 +130,17 @@ impl SymTable {
                 },
                 Symbol::Const {
                     name: "ln2".into(),
-                    value: Decimal::TWO.ln(),
+                    value: crate::number::consts::LN_2,
                     description: Some("Natural logarithm of 2".into()),
                 },
                 Symbol::Const {
                     name: "ln10".into(),
-                    value: Decimal::TEN.log10(),
+                    value: crate::number::consts::LN_10,
                     description: Some("Natural logarithm of 10".into()),
                 },
                 Symbol::Const {
                     name: "sqrt2".into(),
-                    value: Decimal::TWO.sqrt().unwrap(),
+                    value: crate::number::consts::SQRT_2,
                     description: Some("Square root of 2".into()),
                 },
                 // Trigonometric functions
@@ -377,14 +287,15 @@ impl SymTable {
                     args: 2,
                     variadic: false,
                     callback: |args| {
+                        use rust_decimal::prelude::{ToPrimitive, FromPrimitive};
                         let base = args[0];
                         let exponent = args[1];
-                        match panic::catch_unwind(panic::AssertUnwindSafe(|| base.powd(exponent))) {
-                            Ok(result) => Ok(result),
-                            Err(_) => Err(FuncError::MathError {
-                                message: format!("Power operation failed: {}^{}", base, exponent),
-                            }),
-                        }
+
+                        // Convert to f64, compute power, convert back
+                        let base_f64 = base.to_f64().ok_or(FuncError::ToF64Conversion)?;
+                        let exp_f64 = exponent.to_f64().ok_or(FuncError::ToF64Conversion)?;
+                        let result_f64 = base_f64.powf(exp_f64);
+                        Decimal::from_f64(result_f64).ok_or(FuncError::FromF64Conversion)
                     },
                     description: Some("x raised to power y".into()),
                 },
@@ -433,7 +344,8 @@ impl SymTable {
                                 input: args[0],
                             })
                         } else {
-                            Ok(args[0].log10())
+                            // log10(x) = ln(x) / ln(10)
+                            Ok(args[0].ln() / crate::number::consts::LN_10)
                         }
                     },
                     description: Some("Base-10 logarithm".into()),
@@ -593,80 +505,5 @@ impl SymTable {
                 },
             ],
         }
-    }
-
-    /// Adds a constant to the table.
-    ///
-    /// Returns an error if a symbol with the same name already exists.
-    pub fn add_const<S: Into<Cow<'static, str>>>(
-        &mut self,
-        name: S,
-        value: Decimal,
-    ) -> Result<&mut Self, SymbolError> {
-        let name = name.into();
-        if self.get(&name).is_some() {
-            return Err(SymbolError::DuplicateSymbol(name.to_string()));
-        }
-        self.symbols.push(Symbol::Const {
-            name,
-            value,
-            description: None,
-        });
-        Ok(self)
-    }
-
-    /// Adds a function to the table.
-    ///
-    /// # Parameters
-    /// - `name`: Function name
-    /// - `args`: Minimum number of arguments
-    /// - `variadic`: Whether the function accepts additional arguments
-    /// - `callback`: Function implementation
-    ///
-    /// Returns an error if a symbol with the same name already exists.
-    pub fn add_func<S: Into<Cow<'static, str>>>(
-        &mut self,
-        name: S,
-        args: usize,
-        variadic: bool,
-        callback: fn(&[Decimal]) -> Result<Decimal, FuncError>,
-    ) -> Result<&mut Self, SymbolError> {
-        let name = name.into();
-        if self.get(&name).is_some() {
-            return Err(SymbolError::DuplicateSymbol(name.to_string()));
-        }
-        self.symbols.push(Symbol::Func {
-            name,
-            args,
-            variadic,
-            callback,
-            description: None,
-        });
-        Ok(self)
-    }
-
-    /// Looks up a symbol by name (case-insensitive).
-    pub fn get(&self, name: &str) -> Option<&Symbol> {
-        self.symbols
-            .iter()
-            .find(|sym| sym.name().eq_ignore_ascii_case(name))
-    }
-
-    /// Looks up a symbol by name and returns its index and reference (case-insensitive).
-    pub fn get_with_index(&self, name: &str) -> Option<(usize, &Symbol)> {
-        self.symbols
-            .iter()
-            .enumerate()
-            .find(|(_, sym)| sym.name().eq_ignore_ascii_case(name))
-    }
-
-    /// Returns a symbol by index.
-    pub fn get_by_index(&self, index: usize) -> Option<&Symbol> {
-        self.symbols.get(index)
-    }
-
-    /// Returns an iterator over all symbols in the table.
-    pub fn symbols(&self) -> impl Iterator<Item = &Symbol> {
-        self.symbols.iter()
     }
 }
