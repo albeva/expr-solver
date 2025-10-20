@@ -15,29 +15,15 @@ A mathematical expression evaluator library written in Rust with support for cus
 
 ## How It Works
 
-The library implements a type-safe compiler pipeline using Rust's type system:
+Classic compiler pipeline with type-safe state transitions:
 
 ```
-Source → Lexer → Parser → AST → Compiler → Program<Compiled>
-                                                     ↓ link(SymTable)
-                                            Program<Linked> → VM → Result
+Input → Lexer → Parser → Compiler → Program<Compiled>
+                                           ↓ link
+                                    Program<Linked> → Execute
 ```
 
-1. **Lexer** - Tokenizes the input string into operators, numbers, and identifiers
-2. **Parser** - Uses operator precedence climbing to build an Abstract Syntax Tree (AST)
-3. **Compiler** - Single-pass compilation: generates bytecode and collects symbol metadata
-4. **Linker** - Validates symbols exist in the symbol table and remaps indices
-5. **Virtual Machine** - Executes the bytecode on a stack-based VM
-
-**Type-State Pattern**: The `Program` type uses Rust's type system to enforce the correct pipeline order at compile time:
-- `Program<Compiled>` - Bytecode generated, not yet linked
-- `Program<Linked>` - Linked with symbol table, ready to execute
-
-This architecture allows for:
-- Compile-time safety: cannot execute an unlinked program
-- Separating compilation from execution
-- Compiling expressions once and running them multiple times with different symbol tables
-- Serializing compiled bytecode to disk for later use
+The `Program` type uses Rust's type system to enforce correct usage at compile time. You cannot execute an unlinked program, and you cannot link a program twice.
 
 ## Usage
 
@@ -64,17 +50,12 @@ expr-solver-bin = "1.0.3"
 ```rust
 use expr_solver::eval;
 
-fn main() {
-    // Quick one-liner evaluation with standard library
-    match eval("2 + 3 * 4") {
-        Ok(result) => println!("Result: {}", result), // 14
-        Err(e) => eprintln!("Error: {}", e),
-    }
+// Simple one-liner
+let result = eval("2 + 3 * 4").unwrap();
+assert_eq!(result.to_string(), "14");
 
-    // Works with built-in functions and constants
-    let result = eval("sqrt(16) + pi").unwrap();
-    println!("Result: {}", result); // 7.14159...
-}
+// With built-in functions
+let result = eval("sqrt(16) + sin(pi/2)").unwrap();
 ```
 
 ### Custom Symbols
@@ -83,172 +64,60 @@ fn main() {
 use expr_solver::{eval_with_table, SymTable};
 use rust_decimal_macros::dec;
 
-fn main() {
-    // Create a custom symbol table
-    let mut table = SymTable::stdlib();
-    table.add_const("x", dec!(10)).unwrap();
-    table.add_func("double", 1, false, |args| Ok(args[0] * dec!(2))).unwrap();
+let mut table = SymTable::stdlib();
+table.add_const("x", dec!(10)).unwrap();
+table.add_func("double", 1, false, |args| Ok(args[0] * dec!(2))).unwrap();
 
-    // Evaluate with custom symbols
-    let result = eval_with_table("double(x) + sqrt(25)", table).unwrap();
-    println!("Result: {}", result); // 25
-}
+let result = eval_with_table("double(x)", table).unwrap();
+assert_eq!(result, dec!(20));
 ```
 
-### Advanced: Compile and Reuse
-
-For expressions that need to be evaluated multiple times, compile once and execute many times:
+### Compile Once, Execute Many Times
 
 ```rust
-use expr_solver::{load, load_with_table, SymTable};
+use expr_solver::{load, SymTable};
 use rust_decimal_macros::dec;
 
-fn main() {
-    // Compile expression
-    let program = load("x * 2 + y").unwrap();
+// Compile expression
+let program = load("x * 2 + y").unwrap();
 
-    // Execute with different symbol tables
-    let mut table1 = SymTable::new();
-    table1.add_const("x", dec!(10)).unwrap();
-    table1.add_const("y", dec!(5)).unwrap();
+// Execute with different values
+let mut table = SymTable::new();
+table.add_const("x", dec!(10)).unwrap();
+table.add_const("y", dec!(5)).unwrap();
 
-    let result1 = program.link(table1).unwrap().execute().unwrap();
-    println!("Result 1: {}", result1); // 25
-
-    // Or compile and link in one step
-    let mut table2 = SymTable::stdlib();
-    table2.add_const("x", dec!(20)).unwrap();
-    table2.add_const("y", dec!(3)).unwrap();
-
-    let program = load_with_table("x * 2 + y", table2).unwrap();
-    let result2 = program.execute().unwrap();
-    println!("Result 2: {}", result2); // 43
-}
+let linked = program.link(table).unwrap();
+let result = linked.execute().unwrap(); // 25
 ```
 
-### Bytecode Serialization
+## Precision
 
-```rust
-use expr_solver::{load_with_table, eval_file_with_table, Program, SymTable};
-
-fn main() {
-    // Compile and save to file
-    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).unwrap();
-    program.save_bytecode_to_file("expr.bin").unwrap();
-
-    // Load and execute the compiled bytecode
-    let result = eval_file_with_table("expr.bin", SymTable::stdlib()).unwrap();
-    println!("Result: {}", result); // 14
-
-    // Or load and link manually
-    let program = Program::new_from_file("expr.bin")
-        .unwrap()
-        .link(SymTable::stdlib())
-        .unwrap();
-    let result = program.execute().unwrap();
-    println!("Result: {}", result); // 14
-}
-```
-
-### Viewing Assembly
-
-You can inspect the generated bytecode as human-readable assembly:
-
-```rust
-use expr_solver::{load_with_table, SymTable};
-
-fn main() {
-    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).unwrap();
-    println!("{}", program.get_assembly());
-}
-```
-
-Output:
-```asm
-; VERSION 1.0.2
-0000 PUSH 2
-0001 PUSH 3
-0002 PUSH 4
-0003 MUL
-0004 ADD
-```
-
-The assembly shows the stack-based bytecode instructions that will be executed by the VM.
-
-## Precision and Data Types
-
-All calculations are performed using **128-bit `Decimal`** type from the `rust_decimal` crate, providing exact decimal arithmetic without floating-point errors.
-
-> **Note**: Some trigonometric and hyperbolic functions (`asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, `tanh`, `cbrt`, `exp2`, `log2`, `hypot`) internally convert to/from `f64` for computation, which may introduce minor precision differences. All constants (`pi`, `e`, `tau`, `ln2`, `ln10`, `sqrt2`) are computed using native `Decimal` operations for maximum precision.
+Uses **128-bit `Decimal`** arithmetic for exact decimal calculations without floating-point errors.
 
 ## Built-in Functions
 
-| Function                    | Arguments | Description                              | Notes                           |
-|-----------------------------|-----------|------------------------------------------|---------------------------------|
-| **Arithmetic**              |           |                                          |                                 |
-| `abs(x)`                    | 1         | Absolute value                           |                                 |
-| `sign(x)`                   | 1         | Sign (-1, 0, or 1)                       |                                 |
-| `floor(x)`                  | 1         | Round down to integer                    |                                 |
-| `ceil(x)`                   | 1         | Round up to integer                      |                                 |
-| `round(x)`                  | 1         | Round to nearest integer                 |                                 |
-| `trunc(x)`                  | 1         | Truncate to integer                      |                                 |
-| `fract(x)`                  | 1         | Fractional part                          |                                 |
-| `mod(x, y)`                 | 2         | Remainder of x/y                         |                                 |
-| `clamp(x, min, max)`        | 3         | Constrain value between bounds           |                                 |
-| **Trigonometry**            |           |                                          |                                 |
-| `sin(x)`                    | 1         | Sine                                     |                                 |
-| `cos(x)`                    | 1         | Cosine                                   |                                 |
-| `tan(x)`                    | 1         | Tangent                                  |                                 |
-| `asin(x)`                   | 1         | Arcsine                                  | Uses f64 internally             |
-| `acos(x)`                   | 1         | Arccosine                                | Uses f64 internally             |
-| `atan(x)`                   | 1         | Arctangent                               | Uses f64 internally             |
-| `atan2(y, x)`               | 2         | Two-argument arctangent                  | Uses f64 internally             |
-| **Hyperbolic**              |           |                                          |                                 |
-| `sinh(x)`                   | 1         | Hyperbolic sine                          | Uses f64 internally             |
-| `cosh(x)`                   | 1         | Hyperbolic cosine                        | Uses f64 internally             |
-| `tanh(x)`                   | 1         | Hyperbolic tangent                       | Uses f64 internally             |
-| **Exponential/Logarithmic** |           |                                          |                                 |
-| `sqrt(x)`                   | 1         | Square root                              |                                 |
-| `cbrt(x)`                   | 1         | Cube root                                | Uses f64 internally             |
-| `pow(x, y)`                 | 2         | x raised to power y                      |                                 |
-| `exp(x)`                    | 1         | e raised to power x                      |                                 |
-| `exp2(x)`                   | 1         | 2 raised to power x                      | Uses f64 internally             |
-| `log(x)`                    | 1         | Natural logarithm                        |                                 |
-| `log2(x)`                   | 1         | Base-2 logarithm                         | Uses f64 internally             |
-| `log10(x)`                  | 1         | Base-10 logarithm                        |                                 |
-| `hypot(x, y)`               | 2         | Euclidean distance √(x²+y²)              | Uses f64 internally             |
-| **Variadic**                |           |                                          |                                 |
-| `min(x, ...)`               | 1+        | Minimum value                            | Accepts any number of arguments |
-| `max(x, ...)`               | 1+        | Maximum value                            | Accepts any number of arguments |
-| `sum(x, ...)`               | 1+        | Sum of values                            | Accepts any number of arguments |
-| `avg(x, ...)`               | 1+        | Average of values                        | Accepts any number of arguments |
-| **Special**                 |           |                                          |                                 |
-| `if(cond, t, f)`            | 3         | Conditional: returns t if cond≠0, else f |                                 |
+| Category       | Functions                                                                 |
+|----------------|---------------------------------------------------------------------------|
+| **Arithmetic** | `abs`, `sign`, `floor`, `ceil`, `round`, `trunc`, `fract`, `mod`, `clamp` |
+| **Trig**       | `sin`, `cos`, `tan`, `asin`*, `acos`*, `atan`*, `atan2`*                  |
+| **Hyperbolic** | `sinh`*, `cosh`*, `tanh`*                                                 |
+| **Exp/Log**    | `sqrt`, `cbrt`*, `pow`, `exp`, `exp2`*, `log`, `log2`*, `log10`, `hypot`* |
+| **Variadic**   | `min`, `max`, `sum`, `avg` (1+ args)                                      |
+| **Special**    | `if(cond, then, else)`                                                    |
+
+\* *Uses f64 internally, may have minor precision differences*
 
 ## Built-in Constants
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `pi` | 3.14159... | π (pi) |
-| `e` | 2.71828... | Euler's number |
-| `tau` | 6.28318... | 2π (tau) |
-| `ln2` | 0.69314... | Natural logarithm of 2 |
-| `ln10` | 2.30258... | Natural logarithm of 10 |
-| `sqrt2` | 1.41421... | Square root of 2 |
+`pi`, `e`, `tau`, `ln2`, `ln10`, `sqrt2`
 
-> **Note**: All function and constant names are case-insensitive.
+> All names are case-insensitive.
 
-## Supported Operators
+## Operators
 
-| Operator | Type | Associativity | Precedence | Description |
-|----------|------|---------------|------------|-------------|
-| `!` | Postfix Unary | Left | 6 | Factorial |
-| `^` | Binary | Right | 5 | Exponentiation |
-| `-` | Prefix Unary | Right | 4 | Negation |
-| `*`, `/` | Binary | Left | 3 | Multiplication, Division |
-| `+`, `-` | Binary | Left | 2 | Addition, Subtraction |
-| `==`, `!=`, `<`, `<=`, `>`, `>=` | Binary | Left | 1 | Comparisons (return 1 or 0) |
-| `()` | Grouping | - | - | Parentheses for grouping |
+**Arithmetic**: `+`, `-`, `*`, `/`, `^` (power), `!` (factorial), unary `-`
+**Comparison**: `==`, `!=`, `<`, `<=`, `>`, `>=` (returns 1 or 0)
+**Grouping**: `(` `)`
 
 ## Command Line Usage
 
