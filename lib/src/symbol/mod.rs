@@ -1,7 +1,12 @@
 //! Symbol table for constants and functions.
 //!
-//! This module provides symbol table functionality with support for both
-//! f64 and Decimal numeric types via feature flags.
+//! This module provides symbol table functionality with type-specific implementations
+//! for different numeric backends:
+//!
+//! - `f64.rs` - Standard f64 floating-point with relaxed error handling
+//! - `decimal.rs` - High-precision 128-bit Decimal with strict validation
+//!
+//! The appropriate implementation is selected at compile-time via feature flags.
 
 use crate::number::Number;
 use std::borrow::Cow;

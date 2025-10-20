@@ -27,6 +27,16 @@ pub enum VmError {
 ///
 /// The VM evaluates programs by executing bytecode instructions on a stack,
 /// performing arithmetic operations and function calls.
+///
+/// ## Error Handling
+///
+/// Behavior varies based on the numeric backend:
+///
+/// - **f64 mode**: Relaxed error handling. Only catches errors that would cause panics.
+///   Allows `Inf` and `NaN` results from operations like `1/0` or `sqrt(-1)`.
+///
+/// - **Decimal mode**: Strict error handling. All arithmetic operations are checked
+///   for overflow/underflow. Returns errors for domain violations.
 #[derive(Debug)]
 pub struct Vm<'vm> {
     bytecode: &'vm [Instr],

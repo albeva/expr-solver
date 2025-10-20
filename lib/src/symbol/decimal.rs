@@ -78,7 +78,9 @@ impl SymTable {
     /// Creates a symbol table with the standard library for Decimal precision.
     ///
     /// Most functions use native 128-bit `Decimal` arithmetic for high precision.
-    /// Inverse trig functions (asin, acos, atan, atan2) use f64 internally.
+    /// Some operations use f64 conversion internally due to `rust_decimal` limitations:
+    /// - Inverse trig functions: `asin`, `acos`, `atan`, `atan2`
+    /// - Power function: `pow` (for non-integer exponents)
     ///
     /// ## Fixed arity functions
     /// - `sin(x)` - Sine

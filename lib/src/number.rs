@@ -6,14 +6,28 @@
 //!
 //! ## Features
 //!
-//! - `f64-floats` (default): Use standard f64 floating-point arithmetic
-//! - `decimal-precision`: Use 128-bit Decimal for high precision
+//! - **`f64-floats`** (default): Standard f64 floating-point arithmetic
+//!   - Fast and efficient for general-purpose math
+//!   - Allows `Inf` and `NaN` results
+//!   - Minimal error checking (only prevents panics)
+//!
+//! - **`decimal-precision`**: 128-bit Decimal for high precision
+//!   - Exact decimal representation
+//!   - Checked arithmetic with overflow/underflow detection
+//!   - Domain validation for all operations
+//!   - Ideal for financial calculations
 //!
 //! ## Type Alias
 //!
 //! The `Number` type alias resolves to:
-//! - `f64` when `f64-floats` is enabled
-//! - `rust_decimal::Decimal` when `decimal-precision` is enabled
+//! - `f64` when `f64-floats` feature is enabled
+//! - `rust_decimal::Decimal` when `decimal-precision` feature is enabled
+//!
+//! ## Internal Constants
+//!
+//! The `consts` module is internal and provides basic numeric constants (`ZERO`, `ONE`)
+//! used by the VM. Mathematical constants (pi, e, etc.) are provided through the
+//! type-specific symbol table implementations in `symbol/f64.rs` and `symbol/decimal.rs`.
 
 #[cfg(feature = "decimal-precision")]
 pub use rust_decimal::Decimal as Number;
