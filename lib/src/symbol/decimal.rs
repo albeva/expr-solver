@@ -2,11 +2,17 @@
 //!
 //! This module provides high-precision 128-bit Decimal arithmetic with checked operations.
 
-use super::{FuncError, Symbol, SymTable};
+use super::{FuncError, SymTable, Symbol};
 use crate::number::Number;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::*;
+use rust_decimal_macros::dec;
 use std::panic;
+
+// Mathematical constants for symbol table
+const LN_2: Number = dec!(0.6931471805599453094172321);
+const LN_10: Number = dec!(2.3025850929940456840179915);
+const SQRT_2: Number = dec!(1.4142135623730950488016887);
 
 /// Helper function for single-argument f64 calculations
 /// Used for inverse trig functions that don't have native Decimal implementations
@@ -130,17 +136,17 @@ impl SymTable {
                 },
                 Symbol::Const {
                     name: "ln2".into(),
-                    value: crate::number::consts::LN_2,
+                    value: LN_2,
                     description: Some("Natural logarithm of 2".into()),
                 },
                 Symbol::Const {
                     name: "ln10".into(),
-                    value: crate::number::consts::LN_10,
+                    value: LN_10,
                     description: Some("Natural logarithm of 10".into()),
                 },
                 Symbol::Const {
                     name: "sqrt2".into(),
-                    value: crate::number::consts::SQRT_2,
+                    value: SQRT_2,
                     description: Some("Square root of 2".into()),
                 },
                 // Trigonometric functions
@@ -287,7 +293,7 @@ impl SymTable {
                     args: 2,
                     variadic: false,
                     callback: |args| {
-                        use rust_decimal::prelude::{ToPrimitive, FromPrimitive};
+                        use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
                         let base = args[0];
                         let exponent = args[1];
 
@@ -345,7 +351,7 @@ impl SymTable {
                             })
                         } else {
                             // log10(x) = ln(x) / ln(10)
-                            Ok(args[0].ln() / crate::number::consts::LN_10)
+                            Ok(args[0].ln() / LN_10)
                         }
                     },
                     description: Some("Base-10 logarithm".into()),

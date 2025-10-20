@@ -1,6 +1,6 @@
 use crate::ir::Instr;
 use crate::number::Number;
-use crate::symbol::{FuncError, Symbol, SymTable};
+use crate::symbol::{FuncError, SymTable, Symbol};
 use thiserror::Error;
 
 #[cfg(all(test, feature = "decimal-precision"))]
@@ -243,7 +243,7 @@ impl<'vm> Vm<'vm> {
 
     #[cfg(feature = "decimal-precision")]
     fn pow_op(&mut self) -> Result<(), VmError> {
-        use rust_decimal::prelude::{ToPrimitive, FromPrimitive};
+        use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 
         let exponent = self.pop()?;
         let base = self.pop()?;
@@ -260,7 +260,10 @@ impl<'vm> Vm<'vm> {
         let result_f64 = base_f64.powf(exp_f64);
 
         let result = Number::from_f64(result_f64).ok_or_else(|| VmError::ArithmeticError {
-            message: format!("Power operation result cannot be represented: {} ^ {}", base, exponent),
+            message: format!(
+                "Power operation result cannot be represented: {} ^ {}",
+                base, exponent
+            ),
         })?;
 
         self.stack.push(result);
@@ -277,8 +280,8 @@ impl<'vm> Vm<'vm> {
 
     #[cfg(feature = "decimal-precision")]
     fn fact_op(&mut self) -> Result<(), VmError> {
-        use rust_decimal::prelude::*;
         use crate::number::consts;
+        use rust_decimal::prelude::*;
 
         let n = self.pop()?;
 
@@ -422,9 +425,18 @@ mod tests {
 
         // Test all binary operations using string comparison
         let test_cases = vec![
-            (vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub], "4"),
-            (vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul], "12"),
-            (vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div], "4"),
+            (
+                vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
+                "4",
+            ),
+            (
+                vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
+                "12",
+            ),
+            (
+                vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
+                "4",
+            ),
         ];
 
         for (code, expected) in test_cases {

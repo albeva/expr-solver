@@ -1,5 +1,5 @@
 use clap::{ArgAction, Parser};
-use expr_solver::{Number, ParseNumber, Program, Symbol, SymTable};
+use expr_solver::{Number, ParseNumber, Program, SymTable, Symbol};
 use std::path::PathBuf;
 
 /// A mathematical expression evaluator with compilation support

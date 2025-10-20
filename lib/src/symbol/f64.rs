@@ -4,7 +4,7 @@
 //! NaN and Inf values are allowed as results. Only domain errors that would cause panics
 //! are caught and returned as errors.
 
-use super::{Symbol, SymTable};
+use super::{SymTable, Symbol};
 
 #[cfg(feature = "f64-floats")]
 impl SymTable {
@@ -296,22 +296,14 @@ impl SymTable {
                     name: "min".into(),
                     args: 1,
                     variadic: true,
-                    callback: |args| {
-                        Ok(args
-                            .iter()
-                            .fold(f64::INFINITY, |acc, &x| acc.min(x)))
-                    },
+                    callback: |args| Ok(args.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))),
                     description: Some("Minimum value".into()),
                 },
                 Symbol::Func {
                     name: "max".into(),
                     args: 1,
                     variadic: true,
-                    callback: |args| {
-                        Ok(args
-                            .iter()
-                            .fold(f64::NEG_INFINITY, |acc, &x| acc.max(x)))
-                    },
+                    callback: |args| Ok(args.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x))),
                     description: Some("Maximum value".into()),
                 },
                 Symbol::Func {

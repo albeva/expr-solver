@@ -80,7 +80,7 @@
 
 // Core types (shared)
 mod ir;
-pub mod number;
+mod number;
 mod span;
 mod symbol;
 mod token;
