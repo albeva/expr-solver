@@ -7,7 +7,8 @@ use super::parser::Parser;
 use crate::ir::Instr;
 use crate::number::Number;
 use crate::span::{Span, SpanError};
-use crate::symbol::{SymTable, Symbol};
+use crate::symbol::Symbol;
+use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 #[cfg(feature = "serialization")]

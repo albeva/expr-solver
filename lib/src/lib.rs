@@ -83,6 +83,7 @@ mod ir;
 mod number;
 mod span;
 mod symbol;
+mod symtable;
 mod token;
 mod vm;
 
@@ -101,7 +102,8 @@ pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;
 pub use program::{Compiled, Linked, Program, ProgramOrigin};
-pub use symbol::{SymTable, Symbol, SymbolError};
+pub use symbol::{Symbol, SymbolError};
+pub use symtable::SymTable;
 pub use vm::{Vm, VmError};
 
 // ============================================================================

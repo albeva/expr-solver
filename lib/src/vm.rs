@@ -1,6 +1,7 @@
 use crate::ir::Instr;
 use crate::number::Number;
-use crate::symbol::{FuncError, SymTable, Symbol};
+use crate::symbol::{FuncError, Symbol};
+use crate::symtable::SymTable;
 use thiserror::Error;
 
 #[cfg(all(test, feature = "decimal-precision"))]
@@ -365,7 +366,7 @@ impl<'vm> Vm<'vm> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::SymTable;
+    use crate::symtable::SymTable;
 
     // Helper macro to create numbers based on feature
     #[cfg(feature = "decimal-precision")]
