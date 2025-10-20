@@ -1,5 +1,5 @@
 use clap::{ArgAction, Parser};
-use expr_solver::{Eval, SymTable, Symbol};
+use expr_solver::{eval_file_with_table, load_source_with_table, Source, Symbol, SymTable};
 use rust_decimal::prelude::*;
 use std::path::PathBuf;
 
@@ -65,27 +65,29 @@ fn run() -> Result<(), String> {
     }
 
     // load either from string input or a file
-    let program = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        Eval::with_table(expr, table)?
+    if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
+        let source = Source::new(expr);
+        let program = load_source_with_table(&source, table)?;
+
+        if args.assembly {
+            print!("{}", program.get_assembly());
+            return Ok(());
+        }
+
+        // save to a file?
+        if let Some(output_path) = &args.output {
+            program
+                .save_bytecode_to_file(output_path)
+                .map_err(|e| e.to_string())?
+        } else {
+            let res = program.execute().map_err(|e| e.to_string())?;
+            println!("{res}");
+        }
     } else if let Some(input) = &args.input {
-        Eval::from_file_with_table(input.clone(), table)?
+        let res = eval_file_with_table(input.to_string_lossy().as_ref(), table)?;
+        println!("{res}");
     } else {
         return Err("no input".to_string());
-    };
-
-    if args.assembly {
-        print!("{}", program.get_assembly());
-        return Ok(());
-    }
-
-    // save to a file?
-    if let Some(output_path) = &args.output {
-        program
-            .save_bytecode_to_file(output_path)
-            .map_err(|e| e.to_string())?
-    } else {
-        let res = program.execute().map_err(|e| e.to_string())?;
-        println!("{res}");
     }
 
     Ok(())

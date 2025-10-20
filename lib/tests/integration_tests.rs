@@ -1,22 +1,22 @@
-use expr_solver::{Eval, Program, Source, SymTable};
+use expr_solver::{eval, eval_with_table, load_source, load_source_with_table, Program, Source, SymTable};
 use indoc::indoc;
 use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
 
 // Helper function to evaluate an expression and expect an Ok result.
 fn eval_ok(expr: &str) -> Decimal {
-    Eval::evaluate(expr).expect("Evaluation should be successful")
+    eval(expr).expect("Evaluation should be successful")
 }
 
 // Helper function to evaluate an expression and expect an Err result.
 fn eval_err(expr: &str) -> String {
     colored::control::set_override(false);
-    Eval::evaluate(expr).expect_err("Evaluation should fail")
+    eval(expr).expect_err("Evaluation should fail")
 }
 
 // Helper function to evaluate an expression with a custom symbol table and expect an Ok result.
 fn eval_with_custom_table_ok(expr: &str, table: SymTable) -> Decimal {
-    Eval::evaluate_with_table(expr, table).expect("Evaluation should be successful")
+    eval_with_table(expr, table).expect("Evaluation should be successful")
 }
 
 #[test]
@@ -253,9 +253,7 @@ fn test_if_function_semantic_errors() {
 #[test]
 fn test_program_basic_arithmetic() {
     let source = Source::new("2 + 3 * 4");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
+    let program = load_source_with_table(&source, SymTable::stdlib())
         .expect("link failed");
 
     let result = program.execute().expect("execution failed");
@@ -265,9 +263,7 @@ fn test_program_basic_arithmetic() {
 #[test]
 fn test_program_with_constants() {
     let source = Source::new("pi * 2");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
+    let program = load_source_with_table(&source, SymTable::stdlib())
         .expect("link failed");
 
     let result = program.execute().expect("execution failed");
@@ -278,9 +274,7 @@ fn test_program_with_constants() {
 #[test]
 fn test_program_with_functions() {
     let source = Source::new("sqrt(16) + sin(0)");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
+    let program = load_source_with_table(&source, SymTable::stdlib())
         .expect("link failed");
 
     let result = program.execute().expect("execution failed");
@@ -290,7 +284,7 @@ fn test_program_with_functions() {
 #[test]
 fn test_program_symtable_mutation() {
     let source = Source::new("x + y");
-    let program = Program::new_from_source(source).expect("compilation failed");
+    let program = load_source(&source).expect("compilation failed");
 
     // Create symbol table with x and y
     let mut table = SymTable::new();
@@ -314,9 +308,7 @@ fn test_program_symtable_mutation() {
 #[test]
 fn test_program_serialization() {
     let source = Source::new("sqrt(pi) + 2");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
+    let program = load_source_with_table(&source, SymTable::stdlib())
         .expect("link failed");
 
     // Execute original
@@ -340,9 +332,7 @@ fn test_program_serialization() {
 #[test]
 fn test_program_get_assembly() {
     let source = Source::new("2 + 3");
-    let program = Program::new_from_source(source)
-        .expect("compilation failed")
-        .link(SymTable::stdlib())
+    let program = load_source_with_table(&source, SymTable::stdlib())
         .expect("link failed");
 
     let assembly = program.get_assembly();
@@ -353,7 +343,7 @@ fn test_program_get_assembly() {
 #[test]
 fn test_program_link_validation() {
     let source = Source::new("x + y");
-    let program = Program::new_from_source(source).expect("compilation failed");
+    let program = load_source(&source).expect("compilation failed");
 
     // Try to link with empty symbol table (should fail)
     let empty_table = SymTable::new();

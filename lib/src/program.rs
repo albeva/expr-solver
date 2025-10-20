@@ -27,12 +27,14 @@ struct BinaryFormat {
 #[derive(Debug, Clone)]
 pub enum ProgramOrigin {
     File(String),
-    Source(Source),
+    Source,
+    Bytecode,
 }
 
-/// Type-state program structure
+/// Type-state program structure with optional source reference
 #[derive(Debug)]
-pub struct Program<State> {
+pub struct Program<'src, State> {
+    source: Option<&'src Source>,
     state: State,
 }
 
@@ -59,13 +61,13 @@ pub struct Linked {
 // Program - Public constructors (return Compiled state directly)
 // ============================================================================
 
-impl Program<Compiled> {
+impl<'src> Program<'src, Compiled> {
     /// Creates a compiled program from source code.
     ///
     /// Parses and compiles the source in one step.
-    pub fn new_from_source(source: Source) -> Result<Self, ProgramError> {
+    pub fn new_from_source(source: &'src Source) -> Result<Self, ProgramError> {
         // Parse
-        let mut parser = Parser::new(&source);
+        let mut parser = Parser::new(source);
         let ast = parser
             .parse()
             .map_err(ProgramError::ParseError)?
@@ -79,8 +81,9 @@ impl Program<Compiled> {
         let (bytecode, symbols) = Self::generate_bytecode(&ast);
 
         Ok(Program {
+            source: Some(source),
             state: Compiled {
-                origin: ProgramOrigin::Source(source),
+                origin: ProgramOrigin::Source,
                 version: PROGRAM_VERSION.to_string(),
                 bytecode,
                 symbols,
@@ -113,8 +116,9 @@ impl Program<Compiled> {
         }
 
         Ok(Program {
+            source: None, // No source for bytecode
             state: Compiled {
-                origin: ProgramOrigin::Source(Source::new("")), // Unknown origin for bytecode
+                origin: ProgramOrigin::Bytecode,
                 version: binary.version,
                 bytecode: binary.bytecode,
                 symbols: binary.symbols,
@@ -206,7 +210,7 @@ impl Program<Compiled> {
     }
 
     /// Links the bytecode with a symbol table, validating and remapping indices.
-    pub fn link(mut self, table: SymTable) -> Result<Program<Linked>, ProgramError> {
+    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
             let (resolved_idx, symbol) =
@@ -241,6 +245,7 @@ impl Program<Compiled> {
         }
 
         Ok(Program {
+            source: self.source,
             state: Linked {
                 origin: self.state.origin,
                 version: self.state.version,
@@ -314,7 +319,7 @@ impl Program<Compiled> {
 // Program<Linked> - After linking, ready to execute
 // ============================================================================
 
-impl Program<Linked> {
+impl<'src> Program<'src, Linked> {
     /// Executes the program and returns the result.
     pub fn execute(&self) -> Result<Decimal, VmError> {
         Vm::default().run_bytecode(&self.state.bytecode, &self.state.symtable)

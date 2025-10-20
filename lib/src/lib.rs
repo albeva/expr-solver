@@ -28,8 +28,6 @@ mod parser;
 mod program;
 mod source;
 
-use std::{fmt, path::PathBuf};
-
 use crate::span::SpanError;
 use rust_decimal::Decimal;
 
@@ -43,164 +41,114 @@ pub use source::Source;
 pub use symbol::{SymTable, Symbol, SymbolError};
 pub use vm::{Vm, VmError};
 
-/// A wrapper that formats errors with source code highlighting
-struct FormattedError {
-    message: String,
-}
+// ============================================================================
+// Helper functions for evaluating expressions
+// ============================================================================
 
-impl fmt::Display for FormattedError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl<T: SpanError> From<(&T, &Source)> for FormattedError {
-    fn from((error, source): (&T, &Source)) -> Self {
-        Self {
-            message: format!("{}\n{}", error, source.highlight(&error.span())),
-        }
-    }
-}
-
-/// Expression evaluator - simplified wrapper around Program.
-///
-/// `Eval` provides convenient methods for quickly creating compiled or linked programs.
+/// Evaluates an expression string with the standard library.
 ///
 /// # Examples
 ///
 /// ```
-/// use expr_solver::Eval;
+/// use expr_solver::eval;
 ///
-/// // Quick evaluation
-/// let result = Eval::evaluate("2 + 3 * 4").unwrap();
+/// let result = eval("2 + 3 * 4").unwrap();
 /// assert_eq!(result.to_string(), "14");
 /// ```
-pub struct Eval;
+pub fn eval(expression: &str) -> Result<Decimal, String> {
+    let source = Source::new(expression);
+    let program = load_source_with_table(&source, SymTable::stdlib())?;
+    program.execute().map_err(|err| err.to_string())
+}
 
-impl Eval {
-    /// Quick evaluation of an expression with the standard library.
-    ///
-    /// This is a convenience method for one-off evaluations.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use expr_solver::Eval;
-    ///
-    /// let result = Eval::evaluate("2^8").unwrap();
-    /// assert_eq!(result.to_string(), "256");
-    /// ```
-    pub fn evaluate(expression: &str) -> Result<Decimal, String> {
-        let program = Self::new(expression)?;
-        program.execute().map_err(|err| err.to_string())
-    }
+/// Evaluates an expression string with a custom symbol table.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::{eval_with_table, SymTable};
+/// use rust_decimal_macros::dec;
+///
+/// let mut table = SymTable::stdlib();
+/// table.add_const("x", dec!(42)).unwrap();
+///
+/// let result = eval_with_table("x * 2", table).unwrap();
+/// assert_eq!(result, dec!(84));
+/// ```
+pub fn eval_with_table(expression: &str, table: SymTable) -> Result<Decimal, String> {
+    let source = Source::new(expression);
+    let program = load_source_with_table(&source, table)?;
+    program.execute().map_err(|err| err.to_string())
+}
 
-    /// Quick evaluation of an expression with a custom symbol table.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use expr_solver::{Eval, SymTable};
-    /// use rust_decimal_macros::dec;
-    ///
-    /// let mut table = SymTable::stdlib();
-    /// table.add_const("x", dec!(42)).unwrap();
-    ///
-    /// let result = Eval::evaluate_with_table("x * 2", table).unwrap();
-    /// assert_eq!(result, dec!(84));
-    /// ```
-    pub fn evaluate_with_table(expression: &str, table: SymTable) -> Result<Decimal, String> {
-        let program = Self::with_table(expression, table)?;
-        program.execute().map_err(|err| err.to_string())
-    }
+/// Evaluates an expression from a binary file with the standard library.
+///
+/// # Examples
+///
+/// ```no_run
+/// use expr_solver::eval_file;
+///
+/// let result = eval_file("expr.bin").unwrap();
+/// ```
+pub fn eval_file(path: impl AsRef<str>) -> Result<Decimal, String> {
+    eval_file_with_table(path, SymTable::stdlib())
+}
 
-    /// Creates a linked program with the standard library.
-    ///
-    /// Returns a `Program<Linked>` ready to execute.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use expr_solver::Eval;
-    ///
-    /// let program = Eval::new("sin(pi/2)").unwrap();
-    /// let result = program.execute().unwrap();
-    /// ```
-    pub fn new(expression: &str) -> Result<Program<Linked>, String> {
-        Self::with_table(expression, SymTable::stdlib())
-    }
+/// Evaluates an expression from a binary file with a custom symbol table.
+///
+/// # Examples
+///
+/// ```no_run
+/// use expr_solver::{eval_file_with_table, SymTable};
+///
+/// let result = eval_file_with_table("expr.bin", SymTable::stdlib()).unwrap();
+/// ```
+pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<Decimal, String> {
+    let program = Program::new_from_file(path.as_ref()).map_err(|err| err.to_string())?;
+    let linked = program.link(table).map_err(|err| err.to_string())?;
+    linked.execute().map_err(|err| err.to_string())
+}
 
-    /// Creates a linked program with a custom symbol table.
-    ///
-    /// Returns a `Program<Linked>` ready to execute.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use expr_solver::{Eval, SymTable};
-    /// use rust_decimal_macros::dec;
-    ///
-    /// let mut table = SymTable::stdlib();
-    /// table.add_const("x", dec!(42)).unwrap();
-    ///
-    /// let program = Eval::with_table("x * 2", table).unwrap();
-    /// let result = program.execute().unwrap();
-    /// assert_eq!(result, dec!(84));
-    /// ```
-    pub fn with_table(expression: &str, table: SymTable) -> Result<Program<Linked>, String> {
-        let source = Source::new(expression);
-
-        // Parse and compile
-        let program = Program::new_from_source(source.clone()).map_err(|err| {
-            // Extract ParseError from ProgramError for nice formatting
-            match err {
-                ProgramError::ParseError(parse_err) => {
-                    FormattedError::from((&parse_err, &source)).to_string()
-                }
-                other => other.to_string(),
+/// Loads source code and returns a compiled program.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::{load_source, Source, SymTable};
+///
+/// let source = Source::new("2 + 3 * 4");
+/// let program = load_source(&source).unwrap();
+/// let linked = program.link(SymTable::stdlib()).unwrap();
+/// let result = linked.execute().unwrap();
+/// assert_eq!(result.to_string(), "14");
+/// ```
+pub fn load_source(source: &Source) -> Result<Program<'_, Compiled>, String> {
+    Program::new_from_source(source).map_err(|err| {
+        // Extract ParseError from ProgramError for nice formatting
+        match err {
+            ProgramError::ParseError(parse_err) => {
+                format!("{}\n{}", parse_err, source.highlight(&parse_err.span()))
             }
-        })?;
+            other => other.to_string(),
+        }
+    })
+}
 
-        // Link
-        program.link(table).map_err(|err| err.to_string())
-    }
-
-    /// Creates a compiled program from a binary file.
-    ///
-    /// Returns a `Program<Compiled>` that can be linked with a symbol table.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use expr_solver::{Eval, SymTable};
-    /// use std::path::PathBuf;
-    ///
-    /// let program = Eval::new_from_file(PathBuf::from("expr.bin")).unwrap();
-    /// let linked = program.link(SymTable::stdlib()).unwrap();
-    /// let result = linked.execute().unwrap();
-    /// ```
-    pub fn new_from_file(path: PathBuf) -> Result<Program<Compiled>, String> {
-        Program::new_from_file(path.to_string_lossy().to_string()).map_err(|err| err.to_string())
-    }
-
-    /// Creates a linked program from a binary file with a custom symbol table.
-    ///
-    /// Returns a `Program<Linked>` ready to execute.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use expr_solver::{Eval, SymTable};
-    /// use std::path::PathBuf;
-    ///
-    /// let program = Eval::from_file_with_table(
-    ///     PathBuf::from("expr.bin"),
-    ///     SymTable::stdlib()
-    /// ).unwrap();
-    /// let result = program.execute().unwrap();
-    /// ```
-    pub fn from_file_with_table(path: PathBuf, table: SymTable) -> Result<Program<Linked>, String> {
-        let program = Self::new_from_file(path)?;
-        program.link(table).map_err(|err| err.to_string())
-    }
+/// Loads source code and returns a linked program ready to execute.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::{load_source_with_table, Source, SymTable};
+///
+/// let source = Source::new("sin(pi/2)");
+/// let program = load_source_with_table(&source, SymTable::stdlib()).unwrap();
+/// let result = program.execute().unwrap();
+/// ```
+pub fn load_source_with_table(
+    source: &Source,
+    table: SymTable,
+) -> Result<Program<Linked>, String> {
+    let program = load_source(source)?;
+    program.link(table).map_err(|err| err.to_string())
 }
