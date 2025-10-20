@@ -1,6 +1,6 @@
 [package]
 name = "expr-solver-lib"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2024"
 authors = ["Albert Varaksin <albeva@me.com>"]
 description = "A simple math expression solver library"

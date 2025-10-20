@@ -24,22 +24,43 @@ struct BinaryFormat {
     symbols: Vec<SymbolMetadata>,
 }
 
-/// Origin of a program (source code or compiled file)
+/// Origin of a compiled program.
 #[derive(Debug, Clone)]
 pub enum ProgramOrigin {
+    /// Loaded from a file (path stored)
     File(String),
+    /// Compiled from source string
     Source,
+    /// Deserialized from bytecode bytes
     Bytecode,
 }
 
-/// Type-state program structure with optional source reference
+/// Type-state program using Rust's type system to enforce correct usage.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::{Program, SymTable};
+/// use rust_decimal_macros::dec;
+///
+/// // Compile from source
+/// let program = Program::new_from_source("x * 2 + 1").unwrap();
+///
+/// // Link with symbol table
+/// let mut table = SymTable::new();
+/// table.add_const("x", dec!(5)).unwrap();
+/// let linked = program.link(table).unwrap();
+///
+/// // Execute
+/// assert_eq!(linked.execute().unwrap(), dec!(11));
+/// ```
 #[derive(Debug)]
 pub struct Program<'src, State> {
     source: Option<&'src str>,
     state: State,
 }
 
-/// Compiled state - AST compiled to bytecode with symbol metadata
+/// Compiled state - bytecode ready for linking.
 #[derive(Debug)]
 pub struct Compiled {
     origin: ProgramOrigin,
@@ -48,7 +69,7 @@ pub struct Compiled {
     symbols: Vec<SymbolMetadata>,
 }
 
-/// Linked state - bytecode linked with symbol table, ready to execute
+/// Linked state - ready to execute.
 #[derive(Debug)]
 pub struct Linked {
     #[allow(dead_code)]
@@ -63,9 +84,19 @@ pub struct Linked {
 // ============================================================================
 
 impl<'src> Program<'src, Compiled> {
+    // ========================================================================
+    // Public API
+    // ========================================================================
+
     /// Creates a compiled program from source code.
     ///
-    /// Parses and compiles the source in one step.
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Program;
+    ///
+    /// let program = Program::new_from_source("2 + 3 * 4").unwrap();
+    /// ```
     pub fn new_from_source(source: &'src str) -> Result<Self, ProgramError> {
         let trimmed = source.trim();
 
@@ -100,7 +131,124 @@ impl<'src> Program<'src, Compiled> {
         })
     }
 
-    /// Highlights an error in the source code (private helper).
+    /// Creates a compiled program from a binary file.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use expr_solver::Program;
+    ///
+    /// let program = Program::new_from_file("expr.bin").unwrap();
+    /// ```
+    pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
+        let path_str = path.into();
+        let data = std::fs::read(&path_str)?;
+        Self::from_bytecode(&data, ProgramOrigin::File(path_str))
+    }
+
+    /// Creates a compiled program from bytecode bytes.
+    ///
+    /// Deserializes the bytecode and validates the version.
+    pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
+        Self::from_bytecode(data, ProgramOrigin::Bytecode)
+    }
+
+    /// Links the bytecode with a symbol table.
+    ///
+    /// Validates that all required symbols are present and compatible.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::{Program, SymTable};
+    ///
+    /// let program = Program::new_from_source("sin(pi)").unwrap();
+    /// let linked = program.link(SymTable::stdlib()).unwrap();
+    /// ```
+    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+        // Validate symbols and fill in their resolved indices
+        for metadata in &mut self.state.symbols {
+            let (resolved_idx, symbol) =
+                table
+                    .get_with_index(&metadata.name)
+                    .ok_or_else(|| LinkError::MissingSymbol {
+                        name: metadata.name.to_string(),
+                    })?;
+
+            // Validate kind matches
+            Self::validate_symbol_kind(metadata, symbol)?;
+
+            // Store resolved index in metadata
+            metadata.index = Some(resolved_idx);
+        }
+
+        // Rewrite all indices in bytecode using resolved indices from metadata
+        for instr in &mut self.state.bytecode {
+            match instr {
+                Instr::Load(idx) => {
+                    *idx = self.state.symbols[*idx]
+                        .index
+                        .expect("Symbol should have been resolved during linking");
+                }
+                Instr::Call(idx, _) => {
+                    *idx = self.state.symbols[*idx]
+                        .index
+                        .expect("Symbol should have been resolved during linking");
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Program {
+            source: self.source,
+            state: Linked {
+                origin: self.state.origin,
+                version: self.state.version,
+                bytecode: self.state.bytecode,
+                symtable: table,
+            },
+        })
+    }
+
+    /// Returns the symbol metadata required by this program.
+    pub fn symbols(&self) -> &[SymbolMetadata] {
+        &self.state.symbols
+    }
+
+    /// Returns the version of this program.
+    pub fn version(&self) -> &str {
+        &self.state.version
+    }
+
+    // ========================================================================
+    // Private helpers
+    // ========================================================================
+
+    /// Internal helper to create program from bytecode with a specific origin.
+    fn from_bytecode(data: &[u8], origin: ProgramOrigin) -> Result<Self, ProgramError> {
+        let config = bincode::config::standard();
+        let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
+
+        // Validate version
+        if binary.version != PROGRAM_VERSION {
+            return Err(ProgramError::IncompatibleVersion {
+                expected: PROGRAM_VERSION.to_string(),
+                found: binary.version,
+            });
+        }
+
+        Ok(Program {
+            source: None, // No source for bytecode
+            state: Compiled {
+                origin,
+                version: binary.version,
+                bytecode: binary.bytecode,
+                symbols: binary.symbols,
+            },
+        })
+    }
+
+    /// Highlights an error in the source code.
     fn highlight_error(input: &str, error: &ParseError) -> String {
         let span = error.span();
         let pre = Self::escape(&input[..span.start]);
@@ -121,7 +269,7 @@ impl<'src> Program<'src, Compiled> {
         )
     }
 
-    /// Escapes special characters for display (private helper).
+    /// Escapes special characters for display.
     fn escape(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
         for c in s.chars() {
@@ -134,42 +282,7 @@ impl<'src> Program<'src, Compiled> {
         out
     }
 
-    /// Creates a compiled program from a binary file.
-    ///
-    /// Reads and deserializes the bytecode from the file.
-    pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
-        let path_str = path.into();
-        let data = std::fs::read(&path_str)?;
-        Self::new_from_bytecode(&data)
-    }
-
-    /// Creates a compiled program from bytecode bytes.
-    ///
-    /// Deserializes the bytecode and validates the version.
-    pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
-        let config = bincode::config::standard();
-        let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
-
-        // Validate version
-        if binary.version != PROGRAM_VERSION {
-            return Err(ProgramError::IncompatibleVersion {
-                expected: PROGRAM_VERSION.to_string(),
-                found: binary.version,
-            });
-        }
-
-        Ok(Program {
-            source: None, // No source for bytecode
-            state: Compiled {
-                origin: ProgramOrigin::Bytecode,
-                version: binary.version,
-                bytecode: binary.bytecode,
-                symbols: binary.symbols,
-            },
-        })
-    }
-
-    /// Generates bytecode and collects symbol metadata in a single AST traversal (private).
+    /// Generates bytecode and collects symbol metadata in a single AST traversal.
     fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
         let mut bytecode = Vec::new();
         let mut symbols = Vec::new();
@@ -177,6 +290,7 @@ impl<'src> Program<'src, Compiled> {
         (bytecode, symbols)
     }
 
+    /// Emits bytecode instructions for an expression node.
     fn emit_instr(expr: &Expr, bytecode: &mut Vec<Instr>, symbols: &mut Vec<SymbolMetadata>) {
         match &expr.kind {
             ExprKind::Literal(v) => {
@@ -252,52 +366,6 @@ impl<'src> Program<'src, Compiled> {
         symbols.len() - 1
     }
 
-    /// Links the bytecode with a symbol table, validating and remapping indices.
-    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
-        // Validate symbols and fill in their resolved indices
-        for metadata in &mut self.state.symbols {
-            let (resolved_idx, symbol) =
-                table
-                    .get_with_index(&metadata.name)
-                    .ok_or_else(|| LinkError::MissingSymbol {
-                        name: metadata.name.to_string(),
-                    })?;
-
-            // Validate kind matches
-            Self::validate_symbol_kind(metadata, symbol)?;
-
-            // Store resolved index in metadata
-            metadata.index = Some(resolved_idx);
-        }
-
-        // Rewrite all indices in bytecode using resolved indices from metadata
-        for instr in &mut self.state.bytecode {
-            match instr {
-                Instr::Load(idx) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                Instr::Call(idx, _) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                _ => {}
-            }
-        }
-
-        Ok(Program {
-            source: self.source,
-            state: Linked {
-                origin: self.state.origin,
-                version: self.state.version,
-                bytecode: self.state.bytecode,
-                symtable: table,
-            },
-        })
-    }
-
     /// Validates that a symbol matches the expected kind.
     fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkError> {
         match (&metadata.kind, symbol) {
@@ -346,16 +414,6 @@ impl<'src> Program<'src, Compiled> {
             }),
         }
     }
-
-    /// Returns the symbol metadata required by this program.
-    pub fn symbols(&self) -> &[SymbolMetadata] {
-        &self.state.symbols
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
-    }
 }
 
 // ============================================================================
@@ -363,6 +421,10 @@ impl<'src> Program<'src, Compiled> {
 // ============================================================================
 
 impl<'src> Program<'src, Linked> {
+    // ========================================================================
+    // Public API
+    // ========================================================================
+
     /// Executes the program and returns the result.
     pub fn execute(&self) -> Result<Decimal, VmError> {
         Vm::default().run_bytecode(&self.state.bytecode, &self.state.symtable)
@@ -452,6 +514,10 @@ impl<'src> Program<'src, Linked> {
         std::fs::write(path, bytecode)?;
         Ok(())
     }
+
+    // ========================================================================
+    // Private helpers
+    // ========================================================================
 
     /// Formats bytecode as human-readable assembly.
     fn format_assembly(version: &str, bytecode: &[Instr], table: &SymTable) -> String {

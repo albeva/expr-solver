@@ -4,10 +4,12 @@ use crate::span::Span;
 use crate::token::Token;
 use rust_decimal::Decimal;
 
-/// Unary operator
+/// Unary operators: negation and factorial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
+    /// Negation (`-`)
     Neg,
+    /// Factorial (`!`)
     Fact,
 }
 
@@ -21,20 +23,30 @@ impl UnOp {
     }
 }
 
-/// Binary operator
+/// Binary operators: arithmetic and comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOp {
+    /// Addition (`+`)
     Add,
+    /// Subtraction (`-`)
     Sub,
+    /// Multiplication (`*`)
     Mul,
+    /// Division (`/`)
     Div,
+    /// Exponentiation (`^`)
     Pow,
-    // Comparison operators
+    /// Equality (`==`)
     Equal,
+    /// Inequality (`!=`)
     NotEqual,
+    /// Less than (`<`)
     Less,
+    /// Less than or equal (`<=`)
     LessEqual,
+    /// Greater than (`>`)
     Greater,
+    /// Greater than or equal (`>=`)
     GreaterEqual,
 }
 
@@ -57,31 +69,34 @@ impl BinOp {
     }
 }
 
-/// Expression node in the AST.
-///
-/// Unlike v1, this version uses owned strings (no lifetime parameter).
+/// Expression node in the AST with source location.
 #[derive(Debug, Clone)]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
 }
 
-/// Expression kind with owned strings
+/// Expression kind representing different types of expressions.
 #[derive(Debug, Clone)]
 pub enum ExprKind {
+    /// Numeric literal
     Literal(Decimal),
+    /// Identifier (constant or variable)
     Ident {
         name: String,
     },
+    /// Unary operation
     Unary {
         op: UnOp,
         expr: Box<Expr>,
     },
+    /// Binary operation
     Binary {
         op: BinOp,
         left: Box<Expr>,
         right: Box<Expr>,
     },
+    /// Function call
     Call {
         name: String,
         args: Vec<Expr>,

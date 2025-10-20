@@ -1,6 +1,6 @@
 [package]
 name = "expr-solver-bin"
-version = "1.0.3"
+version = "1.1.0"
 edition = "2024"
 authors = ["Albert Varaksin <albeva@me.com>"]
 description = "Binary using the expr-solver-lib to solve math expressions from command line"
@@ -15,6 +15,6 @@ name = "expr-solver"
 path = "src/main.rs"
 
 [dependencies]
-expr-solver-lib = { version = "1.0.3", path = "../lib" }
+expr-solver-lib = { version = "1.1.0", path = "../lib" }
 clap = { version = "4.0", features = ["derive"] }
 rust_decimal = { workspace = true }

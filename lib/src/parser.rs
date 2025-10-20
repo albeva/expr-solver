@@ -11,6 +11,16 @@ pub type ParseResult = Result<Expr, ParseError>;
 /// Recursive descent parser for mathematical expressions.
 ///
 /// Uses operator precedence climbing for efficient binary operator parsing.
+///
+/// # Examples
+///
+/// ```
+/// use expr_solver::Parser;
+///
+/// let mut parser = Parser::new("2 + 3 * 4");
+/// let ast = parser.parse().unwrap();
+/// assert!(ast.is_some());
+/// ```
 pub struct Parser<'src> {
     input: &'src str,
 }
@@ -23,7 +33,7 @@ impl<'src> Parser<'src> {
 
     /// Parses the input into an abstract syntax tree.
     ///
-    /// Returns `None` for empty input, or an expression AST on success.
+    /// Returns `None` for empty input, or an expression on success.
     pub fn parse(&mut self) -> Result<Option<Expr>, ParseError> {
         let mut lexer = Lexer::new(self.input);
         let mut lookahead = lexer.next();
