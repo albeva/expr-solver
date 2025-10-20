@@ -26,9 +26,7 @@ mod lexer;
 mod metadata;
 mod parser;
 mod program;
-mod source;
 
-use crate::span::SpanError;
 use rust_decimal::Decimal;
 
 // Public API
@@ -37,7 +35,6 @@ pub use error::{LinkError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use parser::Parser;
 pub use program::{Compiled, Linked, Program, ProgramOrigin};
-pub use source::Source;
 pub use symbol::{SymTable, Symbol, SymbolError};
 pub use vm::{Vm, VmError};
 
@@ -56,8 +53,7 @@ pub use vm::{Vm, VmError};
 /// assert_eq!(result.to_string(), "14");
 /// ```
 pub fn eval(expression: &str) -> Result<Decimal, String> {
-    let source = Source::new(expression);
-    let program = load_source_with_table(&source, SymTable::stdlib())?;
+    let program = load_with_table(expression, SymTable::stdlib())?;
     program.execute().map_err(|err| err.to_string())
 }
 
@@ -76,8 +72,7 @@ pub fn eval(expression: &str) -> Result<Decimal, String> {
 /// assert_eq!(result, dec!(84));
 /// ```
 pub fn eval_with_table(expression: &str, table: SymTable) -> Result<Decimal, String> {
-    let source = Source::new(expression);
-    let program = load_source_with_table(&source, table)?;
+    let program = load_with_table(expression, table)?;
     program.execute().map_err(|err| err.to_string())
 }
 
@@ -109,46 +104,33 @@ pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<De
     linked.execute().map_err(|err| err.to_string())
 }
 
-/// Loads source code and returns a compiled program.
+/// Loads and compiles an expression, returning a compiled program.
 ///
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{load_source, Source, SymTable};
+/// use expr_solver::{load, SymTable};
 ///
-/// let source = Source::new("2 + 3 * 4");
-/// let program = load_source(&source).unwrap();
+/// let program = load("2 + 3 * 4").unwrap();
 /// let linked = program.link(SymTable::stdlib()).unwrap();
 /// let result = linked.execute().unwrap();
 /// assert_eq!(result.to_string(), "14");
 /// ```
-pub fn load_source(source: &Source) -> Result<Program<'_, Compiled>, String> {
-    Program::new_from_source(source).map_err(|err| {
-        // Extract ParseError from ProgramError for nice formatting
-        match err {
-            ProgramError::ParseError(parse_err) => {
-                format!("{}\n{}", parse_err, source.highlight(&parse_err.span()))
-            }
-            other => other.to_string(),
-        }
-    })
+pub fn load(expression: &str) -> Result<Program<'_, Compiled>, String> {
+    Program::new_from_source(expression).map_err(|err| err.to_string())
 }
 
-/// Loads source code and returns a linked program ready to execute.
+/// Loads, compiles, and links an expression, returning a ready-to-execute program.
 ///
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{load_source_with_table, Source, SymTable};
+/// use expr_solver::{load_with_table, SymTable};
 ///
-/// let source = Source::new("sin(pi/2)");
-/// let program = load_source_with_table(&source, SymTable::stdlib()).unwrap();
+/// let program = load_with_table("sin(pi/2)", SymTable::stdlib()).unwrap();
 /// let result = program.execute().unwrap();
 /// ```
-pub fn load_source_with_table(
-    source: &Source,
-    table: SymTable,
-) -> Result<Program<Linked>, String> {
-    let program = load_source(source)?;
+pub fn load_with_table(expression: &str, table: SymTable) -> Result<Program<'_, Linked>, String> {
+    let program = load(expression)?;
     program.link(table).map_err(|err| err.to_string())
 }

@@ -1,5 +1,5 @@
 use clap::{ArgAction, Parser};
-use expr_solver::{eval_file_with_table, load_source_with_table, Source, Symbol, SymTable};
+use expr_solver::{SymTable, Symbol, eval_file_with_table, load_with_table};
 use rust_decimal::prelude::*;
 use std::path::PathBuf;
 
@@ -66,8 +66,7 @@ fn run() -> Result<(), String> {
 
     // load either from string input or a file
     if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        let source = Source::new(expr);
-        let program = load_source_with_table(&source, table)?;
+        let program = load_with_table(expr, table)?;
 
         if args.assembly {
             print!("{}", program.get_assembly());

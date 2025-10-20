@@ -1,9 +1,8 @@
-//! Recursive descent parser for v2 (creates AST with owned strings).
+//! Recursive descent parser for mathematical expressions.
 
 use super::ast::{BinOp, Expr, UnOp};
 use super::error::ParseError;
 use super::lexer::Lexer;
-use super::source::Source;
 use crate::span::Span;
 use crate::token::Token;
 
@@ -12,22 +11,21 @@ pub type ParseResult = Result<Expr, ParseError>;
 /// Recursive descent parser for mathematical expressions.
 ///
 /// Uses operator precedence climbing for efficient binary operator parsing.
-/// This v2 version creates AST nodes with owned strings.
 pub struct Parser<'src> {
-    source: &'src Source,
+    input: &'src str,
 }
 
 impl<'src> Parser<'src> {
-    /// Creates a new parser from a source.
-    pub fn new(source: &'src Source) -> Self {
-        Self { source }
+    /// Creates a new parser from a string slice.
+    pub fn new(input: &'src str) -> Self {
+        Self { input }
     }
 
-    /// Parses the source into an abstract syntax tree.
+    /// Parses the input into an abstract syntax tree.
     ///
     /// Returns `None` for empty input, or an expression AST on success.
     pub fn parse(&mut self) -> Result<Option<Expr>, ParseError> {
-        let mut lexer = Lexer::new(self.source);
+        let mut lexer = Lexer::new(self.input);
         let mut lookahead = lexer.next();
         let mut span = lexer.span();
 

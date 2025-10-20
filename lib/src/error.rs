@@ -45,8 +45,8 @@ pub enum LinkError {
 /// Errors that can occur during program operations.
 #[derive(Error, Debug)]
 pub enum ProgramError {
-    #[error("Parse error: {0}")]
-    ParseError(#[from] ParseError),
+    #[error("{0}")]
+    ParseError(String),
 
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),

@@ -1,16 +1,17 @@
 //! Type-state program implementation with improved architecture.
 
 use super::ast::{BinOp, Expr, ExprKind, UnOp};
-use super::error::{LinkError, ProgramError};
+use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
-use super::source::Source;
 use crate::ir::Instr;
+use crate::span::{Span, SpanError};
 use crate::symbol::{SymTable, Symbol};
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+use unicode_width::UnicodeWidthStr;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -34,7 +35,7 @@ pub enum ProgramOrigin {
 /// Type-state program structure with optional source reference
 #[derive(Debug)]
 pub struct Program<'src, State> {
-    source: Option<&'src Source>,
+    source: Option<&'src str>,
     state: State,
 }
 
@@ -65,23 +66,31 @@ impl<'src> Program<'src, Compiled> {
     /// Creates a compiled program from source code.
     ///
     /// Parses and compiles the source in one step.
-    pub fn new_from_source(source: &'src Source) -> Result<Self, ProgramError> {
+    pub fn new_from_source(source: &'src str) -> Result<Self, ProgramError> {
+        let trimmed = source.trim();
+
         // Parse
-        let mut parser = Parser::new(source);
+        let mut parser = Parser::new(trimmed);
         let ast = parser
             .parse()
-            .map_err(ProgramError::ParseError)?
+            .map_err(|parse_err| {
+                // Format error with source highlighting
+                let highlighted = Self::highlight_error(trimmed, &parse_err);
+                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
+            })?
             .ok_or_else(|| {
-                ProgramError::ParseError(super::error::ParseError::UnexpectedEof {
-                    span: crate::span::Span::new(0, 0),
-                })
+                let parse_err = ParseError::UnexpectedEof {
+                    span: Span::new(0, 0),
+                };
+                let highlighted = Self::highlight_error(trimmed, &parse_err);
+                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
             })?;
 
         // Compile
         let (bytecode, symbols) = Self::generate_bytecode(&ast);
 
         Ok(Program {
-            source: Some(source),
+            source: Some(trimmed),
             state: Compiled {
                 origin: ProgramOrigin::Source,
                 version: PROGRAM_VERSION.to_string(),
@@ -89,6 +98,40 @@ impl<'src> Program<'src, Compiled> {
                 symbols,
             },
         })
+    }
+
+    /// Highlights an error in the source code (private helper).
+    fn highlight_error(input: &str, error: &ParseError) -> String {
+        let span = error.span();
+        let pre = Self::escape(&input[..span.start]);
+        let tok = Self::escape(&input[span.start..span.end]);
+        let post = Self::escape(&input[span.end..]);
+        let line = format!("{}{}{}", pre, tok.red().bold(), post);
+
+        let caret = "^".green().bold();
+        let squiggly_len = UnicodeWidthStr::width(tok.as_str());
+        let caret_offset = UnicodeWidthStr::width(pre.as_str()) + caret.len();
+
+        format!(
+            "1 | {0}\n  | {1: >2$}{3}",
+            line,
+            caret,
+            caret_offset,
+            "~".repeat(squiggly_len.saturating_sub(1)).green()
+        )
+    }
+
+    /// Escapes special characters for display (private helper).
+    fn escape(s: &str) -> String {
+        let mut out = String::with_capacity(s.len());
+        for c in s.chars() {
+            match c {
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                other => out.push(other),
+            }
+        }
+        out
     }
 
     /// Creates a compiled program from a binary file.

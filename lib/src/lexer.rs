@@ -1,6 +1,5 @@
-//! Lexer for v2 (works with v2::Source that owns String)
+//! Lexer for tokenizing mathematical expressions.
 
-use super::source::Source;
 use crate::span::Span;
 use crate::token::Token;
 use rust_decimal::Decimal;
@@ -17,11 +16,11 @@ pub struct Lexer<'src> {
 }
 
 impl<'src> Lexer<'src> {
-    /// Create a new lexer from a source.
-    pub fn new(source: &'src Source) -> Self {
+    /// Create a new lexer from a string slice.
+    pub fn new(input: &'src str) -> Self {
         Self {
-            input: &source.input,
-            iter: source.input.chars().peekable(),
+            input,
+            iter: input.chars().peekable(),
             start: 0,
             pos: 0,
         }
