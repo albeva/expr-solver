@@ -89,6 +89,47 @@ fn test_functions() {
 }
 
 #[test]
+fn test_decimal_native_functions() {
+    // Logarithmic functions (small rounding error expected)
+    let log2_8 = eval_ok("log2(8)");
+    assert!((log2_8 - dec!(3)).abs() < dec!(0.00001));
+    let log2_1024 = eval_ok("log2(1024)");
+    assert!((log2_1024 - dec!(10)).abs() < dec!(0.00001));
+
+    // Exponential functions (small rounding error expected)
+    let exp2_3 = eval_ok("exp2(3)");
+    assert!((exp2_3 - dec!(8)).abs() < dec!(0.00001));
+    let exp2_10 = eval_ok("exp2(10)");
+    assert!((exp2_10 - dec!(1024)).abs() < dec!(0.001));
+
+    // Hyperbolic functions
+    let sinh_1 = eval_ok("sinh(1)");
+    assert!((sinh_1 - dec!(1.175201193)).abs() < dec!(0.0001));
+
+    let cosh_1 = eval_ok("cosh(1)");
+    assert!((cosh_1 - dec!(1.543080634)).abs() < dec!(0.0001));
+
+    let tanh_1 = eval_ok("tanh(1)");
+    assert!((tanh_1 - dec!(0.761594156)).abs() < dec!(0.0001));
+
+    // Test tanh approaches ±1
+    assert!(eval_ok("tanh(10)") > dec!(0.99));
+    assert!(eval_ok("tanh(-10)") < dec!(-0.99));
+
+    // Cube root
+    assert_eq!(eval_ok("cbrt(27)"), dec!(3));
+    assert_eq!(eval_ok("cbrt(8)"), dec!(2));
+    assert_eq!(eval_ok("cbrt(-8)"), dec!(-2));
+    let cbrt_10 = eval_ok("cbrt(10)");
+    assert!((cbrt_10 - dec!(2.154434690)).abs() < dec!(0.0001));
+
+    // Hypot (Pythagorean theorem - exact for integer results)
+    assert_eq!(eval_ok("hypot(3, 4)"), dec!(5));
+    assert_eq!(eval_ok("hypot(5, 12)"), dec!(13));
+    assert_eq!(eval_ok("hypot(8, 15)"), dec!(17));
+}
+
+#[test]
 fn test_complex_expressions() {
     assert_eq!(eval_ok("sin(pi / 2) + cos(pi)"), dec!(0));
     assert_eq!(eval_ok("max(sqrt(25), pow(2, 4), 10)"), dec!(16));

@@ -40,6 +40,39 @@ where
     Decimal::from_f64(result).ok_or(FuncError::F64ToDecimalConversion)
 }
 
+/// Cube root using Newton-Raphson iteration
+fn cbrt_decimal(x: Decimal) -> Decimal {
+    if x == Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+
+    let sign = if x < Decimal::ZERO { Decimal::NEGATIVE_ONE } else { Decimal::ONE };
+    let abs_x = x.abs();
+
+    // Initial guess using x^(1/3) ≈ x / 3 for small values, or a fraction of x for large
+    let mut guess = if abs_x < Decimal::ONE {
+        abs_x
+    } else {
+        abs_x / Decimal::from(3)
+    };
+
+    let three = Decimal::from(3);
+    let precision = Decimal::new(1, 28); // 10^-28
+
+    // Newton-Raphson: x_n+1 = (2*x_n + a/x_n²) / 3
+    for _ in 0..50 {
+        let guess_squared = guess * guess;
+        let next = (guess + guess + abs_x / guess_squared) / three;
+
+        if (next - guess).abs() < precision {
+            return next * sign;
+        }
+        guess = next;
+    }
+
+    guess * sign
+}
+
 /// Errors that can occur during symbol table operations.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum SymbolError {
@@ -115,6 +148,9 @@ impl SymTable {
     }
 
     /// Creates a symbol table with the standard library.
+    ///
+    /// Most functions use native 128-bit `Decimal` arithmetic for high precision.
+    /// Inverse trig functions (asin, acos, atan, atan2) use f64 internally.
     ///
     /// ## Constants
     /// - `pi` - π (3.14159...)
@@ -256,21 +292,65 @@ impl SymTable {
                     name: "sinh".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.sinh()),
+                    callback: |args| {
+                        let x = args[0];
+                        // sinh(x) = (e^x - e^-x) / 2
+                        match (
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| x.exp())),
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| (-x).exp())),
+                        ) {
+                            (Ok(exp_x), Ok(exp_neg_x)) => {
+                                Ok((exp_x - exp_neg_x) / Decimal::TWO)
+                            }
+                            _ => Err(FuncError::MathError {
+                                message: "Exponential overflow or underflow in sinh".to_string(),
+                            }),
+                        }
+                    },
                     description: Some("Hyperbolic sine".into()),
                 },
                 Symbol::Func {
                     name: "cosh".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.cosh()),
+                    callback: |args| {
+                        let x = args[0];
+                        // cosh(x) = (e^x + e^-x) / 2
+                        match (
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| x.exp())),
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| (-x).exp())),
+                        ) {
+                            (Ok(exp_x), Ok(exp_neg_x)) => {
+                                Ok((exp_x + exp_neg_x) / Decimal::TWO)
+                            }
+                            _ => Err(FuncError::MathError {
+                                message: "Exponential overflow or underflow in cosh".to_string(),
+                            }),
+                        }
+                    },
                     description: Some("Hyperbolic cosine".into()),
                 },
                 Symbol::Func {
                     name: "tanh".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.tanh()),
+                    callback: |args| {
+                        let x = args[0];
+                        // tanh(x) = sinh(x) / cosh(x) = (e^x - e^-x) / (e^x + e^-x)
+                        match (
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| x.exp())),
+                            panic::catch_unwind(panic::AssertUnwindSafe(|| (-x).exp())),
+                        ) {
+                            (Ok(exp_x), Ok(exp_neg_x)) => {
+                                let sinh_x = exp_x - exp_neg_x;
+                                let cosh_x = exp_x + exp_neg_x;
+                                Ok(sinh_x / cosh_x)
+                            }
+                            _ => Err(FuncError::MathError {
+                                message: "Exponential overflow or underflow in tanh".to_string(),
+                            }),
+                        }
+                    },
                     description: Some("Hyperbolic tangent".into()),
                 },
                 // Power and root functions
@@ -289,7 +369,7 @@ impl SymTable {
                     name: "cbrt".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.cbrt()),
+                    callback: |args| Ok(cbrt_decimal(args[0])),
                     description: Some("Cube root".into()),
                 },
                 Symbol::Func {
@@ -329,7 +409,17 @@ impl SymTable {
                     name: "log2".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.log2()),
+                    callback: |args| {
+                        if args[0] <= Decimal::ZERO {
+                            Err(FuncError::DomainError {
+                                function: "log2".to_string(),
+                                input: args[0],
+                            })
+                        } else {
+                            // log2(x) = ln(x) / ln(2)
+                            Ok(args[0].ln() / Decimal::TWO.ln())
+                        }
+                    },
                     description: Some("Base-2 logarithm".into()),
                 },
                 Symbol::Func {
@@ -367,7 +457,17 @@ impl SymTable {
                     name: "exp2".into(),
                     args: 1,
                     variadic: false,
-                    callback: |args| f64_calc_1(args, |x| x.exp2()),
+                    callback: |args| {
+                        let input = args[0];
+                        // exp2(x) = exp(x * ln(2))
+                        let exponent = input * Decimal::TWO.ln();
+                        match panic::catch_unwind(panic::AssertUnwindSafe(|| exponent.exp())) {
+                            Ok(result) => Ok(result),
+                            Err(_) => Err(FuncError::MathError {
+                                message: "Exponential overflow or underflow".to_string(),
+                            }),
+                        }
+                    },
                     description: Some("2 raised to power x".into()),
                 },
                 // Basic math functions
@@ -431,7 +531,17 @@ impl SymTable {
                     name: "hypot".into(),
                     args: 2,
                     variadic: false,
-                    callback: |args| f64_calc_2(args, |x, y| x.hypot(y)),
+                    callback: |args| {
+                        let x = args[0];
+                        let y = args[1];
+                        // hypot(x, y) = sqrt(x² + y²)
+                        let sum_of_squares = x * x + y * y;
+                        sum_of_squares
+                            .sqrt()
+                            .ok_or_else(|| FuncError::MathError {
+                                message: "hypot: sqrt failed (should not happen for sum of squares)".to_string(),
+                            })
+                    },
                     description: Some("Euclidean distance sqrt(x²+y²)".into()),
                 },
                 Symbol::Func {
