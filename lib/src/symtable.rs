@@ -114,6 +114,11 @@ impl SymTable {
         self.symbols.get(index)
     }
 
+    /// Returns a symbol by index.
+    pub fn get_mut_by_index(&mut self, index: usize) -> Option<&mut Symbol> {
+        self.symbols.get_mut(index)
+    }
+
     /// Returns an iterator over all symbols in the table.
     pub fn symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.symbols.iter()

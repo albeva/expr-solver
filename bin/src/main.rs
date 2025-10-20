@@ -75,7 +75,7 @@ fn run() -> Result<(), String> {
     };
 
     // Link the program with the symbol table
-    let program = program.link(table).map_err(|err| err.to_string())?;
+    let mut program = program.link(table).map_err(|err| err.to_string())?;
 
     // Act on the loaded program
     if args.assembly {

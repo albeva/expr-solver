@@ -334,10 +334,10 @@ fn load(expr: &'static str) -> Result<Program<'static, Compiled>, String> {
 
 #[test]
 fn test_program_compile_link_execute() {
-    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
+    let mut program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(14));
 
-    let program = load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
+    let mut program = load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(4));
 }
 
@@ -362,7 +362,7 @@ fn test_program_symtable_mutation() {
 #[test]
 #[cfg(feature = "serialization")]
 fn test_program_serialization() {
-    let program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
+    let mut program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
 
     // Execute original
     let result1 = program.execute().expect("execution failed");
@@ -372,7 +372,7 @@ fn test_program_serialization() {
 
     // Deserialize and re-link
     use expr_solver::Program;
-    let program2 = Program::new_from_bytecode(&bytes)
+    let mut program2 = Program::new_from_bytecode(&bytes)
         .expect("deserialization failed")
         .link(SymTable::stdlib())
         .expect("link failed");
@@ -457,10 +457,10 @@ fn test_let_error_shadowing_global() {
 fn test_let_error_duplicate_names() {
     // Should error when same name declared twice in one let
     let err = eval_err("let x = 1, x = 2 then x");
-    assert!(err.contains("Redefined") || err.contains("already defined"));
+    assert_eq!(err, "Symbol `x` declared multiple times");
     
     let err = eval_err("let x = 1, y = 2, x = 3 then x + y");
-    assert!(err.contains("Redefined") || err.contains("already defined"));
+    assert_eq!(err, "Symbol `x` declared multiple times");
 }
 
 #[test]

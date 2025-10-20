@@ -1,5 +1,6 @@
 //! Type-state program implementation for compile-link-execute workflow.
 
+use std::borrow::Cow::Owned;
 use super::ast::{Expr, ExprKind};
 use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
@@ -7,13 +8,14 @@ use super::parser::Parser;
 use crate::ir::Instr;
 use crate::number::Number;
 use crate::span::{Span, SpanError};
-use crate::symbol::{Symbol, SymbolError};
+use crate::symbol::{Symbol};
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
+use crate::num;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -70,10 +72,7 @@ pub struct Compiled {
     origin: ProgramOrigin,
     version: String,
     bytecode: Vec<Instr>,
-    symbols: Vec<SymbolMetadata>,
-    /// Let declarations: (name, bytecode, symbol_metadata)
-    /// These are evaluated during linking to create local constants
-    let_decls: Vec<(String, Vec<Instr>, Vec<SymbolMetadata>)>,
+    symbols: Vec<SymbolMetadata>
 }
 
 /// Linked state - ready to execute.
@@ -125,7 +124,7 @@ impl<'src> Program<'src, Compiled> {
             })?;
 
         // Compile
-        let (bytecode, symbols, let_decls) = Self::generate_bytecode(&ast);
+        let (bytecode, symbols) = Self::generate_bytecode(&ast);
 
         Ok(Program {
             source: Some(trimmed),
@@ -133,8 +132,7 @@ impl<'src> Program<'src, Compiled> {
                 origin: ProgramOrigin::Source,
                 version: PROGRAM_VERSION.to_string(),
                 bytecode,
-                symbols,
-                let_decls,
+                symbols
             },
         })
     }
@@ -176,63 +174,23 @@ impl<'src> Program<'src, Compiled> {
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// ```
     pub fn link(mut self, mut table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
-        // First, evaluate let declarations and add them as local constants
-        for (name, decl_bytecode, decl_symbols) in &self.state.let_decls {
-            // Resolve symbol indices for this declaration
-            let mut resolved_bytecode = decl_bytecode.clone();
-            let mut resolved_indices = vec![None; decl_symbols.len()];
-
-            // Resolve each symbol used in the declaration
-            for (decl_idx, decl_meta) in decl_symbols.iter().enumerate() {
-                let (table_idx, symbol) = table
-                    .get_with_index(&decl_meta.name)
-                    .ok_or_else(|| LinkError::MissingSymbol {
-                        name: decl_meta.name.to_string(),
-                    })?;
-
-                // Validate kind matches
-                Self::validate_symbol_kind(decl_meta, symbol)?;
-
-                resolved_indices[decl_idx] = Some(table_idx);
-            }
-
-            // Rewrite bytecode indices
-            for instr in &mut resolved_bytecode {
-                match instr {
-                    Instr::Load(idx) => {
-                        *idx = resolved_indices[*idx]
-                            .expect("Symbol should have been resolved");
-                    }
-                    Instr::Call(idx, _) => {
-                        *idx = resolved_indices[*idx]
-                            .expect("Symbol should have been resolved");
-                    }
-                    _ => {}
-                }
-            }
-
-            // Execute the declaration to get its value
-            let value = Vm::run(&resolved_bytecode, &table)?;
-
-            // Add as local constant (this will error if the name already exists - no shadowing!)
-            table
-                .add_const(name.clone(), value, true)
-                .map_err(|e| match e {
-                    SymbolError::DuplicateSymbol(name) => LinkError::RedefinedSymbol { name },
-                })?;
-        }
-
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
-            let (resolved_idx, symbol) =
-                table
-                    .get_with_index(&metadata.name)
-                    .ok_or_else(|| LinkError::MissingSymbol {
-                        name: metadata.name.to_string(),
-                    })?;
-
-            // Validate kind matches
-            Self::validate_symbol_kind(metadata, symbol)?;
+            let resolved_idx = if metadata.local {
+                let idx = table.symbols().count();
+                table.add_const(metadata.name.to_string(), num!(0), true)?;
+                idx
+            } else {
+                let (idx, symbol) =
+                    table
+                        .get_with_index(&metadata.name)
+                        .ok_or_else(|| LinkError::MissingSymbol {
+                            name: metadata.name.to_string(),
+                        })?;
+                // Validate kind matches
+                Self::validate_symbol_kind(metadata, symbol)?;
+                idx
+            };
 
             // Store resolved index in metadata
             metadata.index = Some(resolved_idx);
@@ -241,12 +199,7 @@ impl<'src> Program<'src, Compiled> {
         // Rewrite all indices in bytecode using resolved indices from metadata
         for instr in &mut self.state.bytecode {
             match instr {
-                Instr::Load(idx) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                Instr::Call(idx, _) => {
+                Instr::Load(idx) | Instr::Store(idx) | Instr::Call(idx, _) => {
                     *idx = self.state.symbols[*idx]
                         .index
                         .expect("Symbol should have been resolved during linking");
@@ -300,8 +253,7 @@ impl<'src> Program<'src, Compiled> {
                 origin,
                 version: binary.version,
                 bytecode: binary.bytecode,
-                symbols: binary.symbols,
-                let_decls: Vec::new(), // Will be restored from binary.locals later
+                symbols: binary.symbols
             },
         })
     }
@@ -347,30 +299,41 @@ impl<'src> Program<'src, Compiled> {
     ) -> (
         Vec<Instr>,
         Vec<SymbolMetadata>,
-        Vec<(String, Vec<Instr>, Vec<SymbolMetadata>)>,
     ) {
-        // Extract let declarations if this is a LetExpr
-        let let_decls = if let ExprKind::Let { decls, .. } = &ast.kind {
-            // Compile each declaration
-            decls
-                .iter()
-                .map(|(name, expr)| {
-                    let mut bytecode = Vec::new();
-                    let mut symbols = Vec::new();
-                    Self::emit_instr(expr, &mut bytecode, &mut symbols);
-                    (name.clone(), bytecode, symbols)
-                })
-                .collect()
+        let mut bytecode = Vec::new();
+        let mut symbols: Vec<SymbolMetadata> = Vec::new();
+
+        // Handle local symbols
+        let body = if let ExprKind::Let { decls, body } = &ast.kind {
+            for decl in decls {
+                // ensure we are not re-declaring a symbol
+                if symbols.iter().find(|meta| meta.name == *decl.0).is_some() {
+                    panic!("Symbol `{}` declared multiple times", decl.0); // TODO: return Err
+                }
+
+                // expression
+                Self::emit_instr(&(*decl).1, &mut bytecode, &mut symbols);
+                // declare local symbol
+                let idx = symbols.len();
+                symbols.push(SymbolMetadata{
+                    name:  Owned((*decl.0).to_string()), // TODO: get rid of cloning
+                    kind: SymbolKind::Const,
+                    local: true,
+                    index: None,
+                });
+                // Store the value
+                bytecode.push(Instr::Store(idx));
+            }
+            body
         } else {
-            Vec::new()
+            ast
         };
 
-        // Generate bytecode for the main expression (body if LetExpr)
-        let mut bytecode = Vec::new();
-        let mut symbols = Vec::new();
-        Self::emit_instr(ast, &mut bytecode, &mut symbols);
+        // Emit the expression instructions
+        Self::emit_instr(body, &mut bytecode, &mut symbols);
 
-        (bytecode, symbols, let_decls)
+        // Done
+        (bytecode, symbols)
     }
 
     /// Emits bytecode instructions for an expression node.
@@ -467,6 +430,7 @@ impl<'src> Program<'src, Compiled> {
         symbols.push(SymbolMetadata {
             name: name.to_string().into(),
             kind,
+            local: false,
             index: None,
         });
         symbols.len() - 1
@@ -532,8 +496,8 @@ impl<'src> Program<'src, Linked> {
     // ========================================================================
 
     /// Executes the program and returns the result.
-    pub fn execute(&self) -> Result<Number, VmError> {
-        Vm::run(&self.state.bytecode, &self.state.symtable)
+    pub fn execute(&mut self) -> Result<Number, VmError> {
+        Vm::run(&self.state.bytecode, &mut self.state.symtable)
     }
 
     /// Returns a reference to the symbol table.
@@ -573,6 +537,15 @@ impl<'src> Program<'src, Linked> {
                         .unwrap_or("???");
                     format!("{} {}", "LOAD".magenta(), sym_name.blue())
                 }
+                Instr::Store(idx) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .unwrap_or("???");
+                    format!("{} {}", "STORE".magenta(), sym_name.blue())
+                },
                 Instr::Neg => format!("{}", "NEG".magenta()),
                 Instr::Add => format!("{}", "ADD".magenta()),
                 Instr::Sub => format!("{}", "SUB".magenta()),
@@ -605,7 +578,7 @@ impl<'src> Program<'src, Linked> {
                 }
                 Instr::Jz(target) => {
                     format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
-                }
+                },
             };
             let _ = writeln!(out, "{}", line);
         }

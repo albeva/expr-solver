@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 pub enum Instr {
     Push(Number),
     Load(usize), // Index into SymTable
+    Store(usize),
     Neg,
     Add,
     Sub,

@@ -104,7 +104,7 @@ pub enum ExprKind<'src> {
     },
     /// Let expression with local constant declarations
     Let {
-        decls: Vec<(String, Expr<'src>)>,
+        decls: Vec<(&'src str, Expr<'src>)>,
         body: Box<Expr<'src>>,
     },
 }
@@ -168,7 +168,7 @@ impl<'src> Expr<'src> {
         }
     }
 
-    pub fn let_expr(decls: Vec<(String, Expr<'src>)>, body: Expr<'src>, span: Span) -> Self {
+    pub fn let_expr(decls: Vec<(&'src str, Expr<'src>)>, body: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Let {
                 decls,

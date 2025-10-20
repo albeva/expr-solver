@@ -3,6 +3,7 @@
 use crate::span::Span;
 use crate::span::SpanError;
 use thiserror::Error;
+use crate::SymbolError;
 
 /// Errors that can occur during parsing.
 #[derive(Error, Debug)]
@@ -51,11 +52,14 @@ pub enum ProgramError {
     #[error("{0}")]
     ParseError(String),
 
-    #[error("Link error: {0}")]
+    #[error("{0}")]
     LinkError(#[from] LinkError),
 
-    #[error("VM error: {0}")]
+    #[error("{0}")]
     VmError(#[from] crate::vm::VmError),
+
+    #[error("{0}")]
+    SymError(#[from] SymbolError),
 
     #[cfg(feature = "serialization")]
     #[error("Serialization error: {0}")]

@@ -172,6 +172,6 @@ pub fn eval_file(path: impl AsRef<str>) -> Result<Number, String> {
 #[cfg(feature = "serialization")]
 pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<Number, String> {
     let program = Program::new_from_file(path.as_ref()).map_err(|err| err.to_string())?;
-    let linked = program.link(table).map_err(|err| err.to_string())?;
+    let mut linked = program.link(table).map_err(|err| err.to_string())?;
     linked.execute().map_err(|err| err.to_string())
 }
