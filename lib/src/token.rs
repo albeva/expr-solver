@@ -6,6 +6,7 @@ use std::borrow::Cow;
 pub enum Token<'src> {
     Number(Decimal),
     Ident(&'src str),
+    If,
     Plus,
     Minus,
     Negate,
@@ -57,6 +58,7 @@ impl<'src> Token<'src> {
         match self {
             Token::Number(decimal) => Owned(decimal.to_string()),
             Token::Ident(str) => Borrowed(str),
+            Token::If => Borrowed("if"),
             Token::Plus => Borrowed("+"),
             Token::Minus => Borrowed("-"),
             Token::Negate => Borrowed("-"),

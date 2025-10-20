@@ -550,21 +550,6 @@ impl SymTable {
                     callback: |args| Ok(args[0].clamp(args[1].min(args[2]), args[2].max(args[1]))),
                     description: Some("Constrain value between bounds".into()),
                 },
-                Symbol::Func {
-                    name: "if".into(),
-                    args: 3,
-                    variadic: false,
-                    callback: |args| {
-                        if args[0] != Decimal::ZERO {
-                            Ok(args[1])
-                        } else {
-                            Ok(args[2])
-                        }
-                    },
-                    description: Some(
-                        "Conditional expression: if(condition, true_value, false_value)".into(),
-                    ),
-                },
                 // Variadic functions
                 Symbol::Func {
                     name: "min".into(),

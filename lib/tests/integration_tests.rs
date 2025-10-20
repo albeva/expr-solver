@@ -261,32 +261,6 @@ fn test_emoji_identifiers() {
     assert_eq!(eval_with_custom_table_ok("add🚀(x😀, 2)", table), dec!(12));
 }
 
-#[test]
-fn test_if_function() {
-    // True condition (non-zero)
-    assert_eq!(eval_ok("if(1, 10, 20)"), dec!(10));
-    // False condition (zero)
-    assert_eq!(eval_ok("if(0, 10, 20)"), dec!(20));
-    // True condition (positive decimal)
-    assert_eq!(eval_ok("if(0.5, 10, 20)"), dec!(10));
-    // True condition (negative decimal)
-    assert_eq!(eval_ok("if(-1, 10, 20)"), dec!(10));
-    // Nested if
-    assert_eq!(eval_ok("if(1, if(0, 100, 200), 300)"), dec!(200));
-    // If with expressions as arguments
-    assert_eq!(eval_ok("if(1 > 0, 5 * 2, 10 / 2)"), dec!(10));
-    // If with comparison as condition
-    assert_eq!(eval_ok("if(5 == 5, 1, 0)"), dec!(1));
-}
-
-#[test]
-#[rustfmt::skip]
-fn test_if_function_semantic_errors() {
-    // V2 defers validation to link time
-    assert_eq!(eval_err("if(1, 2)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 2 arguments provided");
-    assert_eq!(eval_err("if(1, 2, 3, 4)"), "Link error: Type mismatch for symbol 'if': expected exactly 3 arguments, found 4 arguments provided");
-}
-
 // ====================
 // Program API Tests
 // ====================
@@ -393,4 +367,130 @@ fn test_program_link_validation() {
     let result = program.link(empty_table);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("Missing symbol"));
+}
+
+#[test]
+fn test_if_expression_basic() {
+    // Test true branch
+    assert_eq!(eval_ok("if(1, 10, 20)"), dec!(10));
+    assert_eq!(eval_ok("if(5, 100, 200)"), dec!(100));
+
+    // Test false branch
+    assert_eq!(eval_ok("if(0, 10, 20)"), dec!(20));
+    assert_eq!(eval_ok("if(0, 100, 200)"), dec!(200));
+}
+
+#[test]
+fn test_if_expression_with_comparisons() {
+    // Greater than
+    assert_eq!(eval_ok("if(5 > 3, 1, 0)"), dec!(1));
+    assert_eq!(eval_ok("if(3 > 5, 1, 0)"), dec!(0));
+
+    // Less than
+    assert_eq!(eval_ok("if(2 < 10, 42, 0)"), dec!(42));
+    assert_eq!(eval_ok("if(10 < 2, 42, 0)"), dec!(0));
+
+    // Equal
+    assert_eq!(eval_ok("if(5 == 5, 1, 0)"), dec!(1));
+    assert_eq!(eval_ok("if(5 == 3, 1, 0)"), dec!(0));
+
+    // Not equal
+    assert_eq!(eval_ok("if(5 != 3, 1, 0)"), dec!(1));
+    assert_eq!(eval_ok("if(5 != 5, 1, 0)"), dec!(0));
+}
+
+#[test]
+fn test_if_expression_nested() {
+    // Nested if in then branch
+    assert_eq!(eval_ok("if(1, if(1, 10, 20), 30)"), dec!(10));
+    assert_eq!(eval_ok("if(1, if(0, 10, 20), 30)"), dec!(20));
+
+    // Nested if in else branch
+    assert_eq!(eval_ok("if(0, 10, if(1, 20, 30))"), dec!(20));
+    assert_eq!(eval_ok("if(0, 10, if(0, 20, 30))"), dec!(30));
+
+    // Nested if in condition
+    assert_eq!(eval_ok("if(if(1, 1, 0), 100, 200)"), dec!(100));
+    assert_eq!(eval_ok("if(if(0, 1, 0), 100, 200)"), dec!(200));
+
+    // Multiple levels of nesting
+    assert_eq!(
+        eval_ok("if(1, if(1, if(1, 1, 2), 3), 4)"),
+        dec!(1)
+    );
+    assert_eq!(
+        eval_ok("if(1, if(1, if(0, 1, 2), 3), 4)"),
+        dec!(2)
+    );
+    assert_eq!(
+        eval_ok("if(1, if(0, if(1, 1, 2), 3), 4)"),
+        dec!(3)
+    );
+    assert_eq!(
+        eval_ok("if(0, if(1, if(1, 1, 2), 3), 4)"),
+        dec!(4)
+    );
+}
+
+#[test]
+fn test_if_expression_with_arithmetic() {
+    // Arithmetic in condition
+    assert_eq!(eval_ok("if(2 + 3, 1, 0)"), dec!(1));
+    assert_eq!(eval_ok("if(5 - 5, 1, 0)"), dec!(0));
+
+    // Arithmetic in branches
+    assert_eq!(eval_ok("if(1, 2 + 3, 10)"), dec!(5));
+    assert_eq!(eval_ok("if(0, 10, 2 * 5)"), dec!(10));
+
+    // Complex expression
+    assert_eq!(eval_ok("if(1, 2 + 3, 4 * 5) + 10"), dec!(15));
+    assert_eq!(eval_ok("if(0, 2 + 3, 4 * 5) + 10"), dec!(30));
+}
+
+#[test]
+fn test_if_expression_case_insensitive() {
+    assert_eq!(eval_ok("IF(1, 10, 20)"), dec!(10));
+    assert_eq!(eval_ok("If(0, 10, 20)"), dec!(20));
+    assert_eq!(eval_ok("iF(1, 100, 200)"), dec!(100));
+}
+
+#[test]
+fn test_if_expression_with_functions() {
+    // Functions in condition
+    assert_eq!(eval_ok("if(abs(-5), 1, 0)"), dec!(1));
+    assert_eq!(eval_ok("if(abs(0), 1, 0)"), dec!(0));
+
+    // Functions in branches
+    assert_eq!(eval_ok("if(1, abs(-10), abs(-20))"), dec!(10));
+    assert_eq!(eval_ok("if(0, abs(-10), abs(-20))"), dec!(20));
+
+    // Complex: max function combined with if
+    assert_eq!(eval_ok("if(max(1, 2) > 0, 42, 0)"), dec!(42));
+}
+
+#[test]
+fn test_if_short_circuit_evaluation() {
+    // This tests that only the taken branch is evaluated
+    // If both branches were evaluated, division by zero would occur
+    // Note: Since we're using bytecode and conditional jumps, only the taken branch executes
+
+    // True branch taken, else branch with division by zero is not evaluated
+    assert_eq!(eval_ok("if(1, 42, 1/0)"), dec!(42));
+
+    // False branch taken, then branch with division by zero is not evaluated
+    assert_eq!(eval_ok("if(0, 1/0, 42)"), dec!(42));
+}
+
+#[test]
+fn test_if_expression_error_cases() {
+    // Wrong number of arguments
+    let err = eval_err("if(1, 2)");
+    assert!(err.contains("expected ')'") || err.contains("expected ','"));
+
+    let err = eval_err("if(1)");
+    assert!(err.contains("expected ')'") || err.contains("expected ','"));
+
+    // Missing parentheses
+    let err = eval_err("if 1, 2, 3");
+    assert!(err.contains("expected '('"));
 }

@@ -76,6 +76,10 @@ impl<'src> Parser<'src> {
                 }
                 Ok(Expr::ident(id_string, current_span))
             }
+            Token::If => {
+                Self::advance(lexer, lookahead, span);
+                Self::parse_if(lexer, lookahead, span, current_span)
+            }
             Token::Minus => {
                 Self::advance(lexer, lookahead, span);
                 let expr = Self::primary(lexer, lookahead, span)?;
@@ -123,6 +127,31 @@ impl<'src> Parser<'src> {
 
         let full_span = start_span.merge(*span);
         Ok(Expr::call(id, args, full_span))
+    }
+
+    fn parse_if<'lex>(
+        lexer: &mut Lexer<'lex>,
+        lookahead: &mut Token<'lex>,
+        span: &mut Span,
+        start_span: Span,
+    ) -> ParseResult {
+        // Expect: if(cond, then_branch, else_branch)
+        Self::expect_token(lexer, lookahead, span, &Token::ParenOpen)?;
+
+        // Parse condition
+        let cond = Self::expression(lexer, lookahead, span)?;
+        Self::expect_token(lexer, lookahead, span, &Token::Comma)?;
+
+        // Parse then branch
+        let then_branch = Self::expression(lexer, lookahead, span)?;
+        Self::expect_token(lexer, lookahead, span, &Token::Comma)?;
+
+        // Parse else branch
+        let else_branch = Self::expression(lexer, lookahead, span)?;
+        Self::expect_token(lexer, lookahead, span, &Token::ParenClose)?;
+
+        let full_span = start_span.merge(*span);
+        Ok(Expr::if_expr(cond, then_branch, else_branch, full_span))
     }
 
     fn climb<'lex>(
