@@ -82,14 +82,9 @@ pub enum ExprKind {
     /// Numeric literal
     Literal(Decimal),
     /// Identifier (constant or variable)
-    Ident {
-        name: String,
-    },
+    Ident { name: String },
     /// Unary operation
-    Unary {
-        op: UnOp,
-        expr: Box<Expr>,
-    },
+    Unary { op: UnOp, expr: Box<Expr> },
     /// Binary operation
     Binary {
         op: BinOp,
@@ -97,10 +92,7 @@ pub enum ExprKind {
         right: Box<Expr>,
     },
     /// Function call
-    Call {
-        name: String,
-        args: Vec<Expr>,
-    },
+    Call { name: String, args: Vec<Expr> },
 }
 
 impl Expr {
