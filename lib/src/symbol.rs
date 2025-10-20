@@ -46,7 +46,11 @@ fn cbrt_decimal(x: Decimal) -> Decimal {
         return Decimal::ZERO;
     }
 
-    let sign = if x < Decimal::ZERO { Decimal::NEGATIVE_ONE } else { Decimal::ONE };
+    let sign = if x < Decimal::ZERO {
+        Decimal::NEGATIVE_ONE
+    } else {
+        Decimal::ONE
+    };
     let abs_x = x.abs();
 
     // Initial guess using x^(1/3) ≈ x / 3 for small values, or a fraction of x for large
@@ -299,9 +303,7 @@ impl SymTable {
                             panic::catch_unwind(panic::AssertUnwindSafe(|| x.exp())),
                             panic::catch_unwind(panic::AssertUnwindSafe(|| (-x).exp())),
                         ) {
-                            (Ok(exp_x), Ok(exp_neg_x)) => {
-                                Ok((exp_x - exp_neg_x) / Decimal::TWO)
-                            }
+                            (Ok(exp_x), Ok(exp_neg_x)) => Ok((exp_x - exp_neg_x) / Decimal::TWO),
                             _ => Err(FuncError::MathError {
                                 message: "Exponential overflow or underflow in sinh".to_string(),
                             }),
@@ -320,9 +322,7 @@ impl SymTable {
                             panic::catch_unwind(panic::AssertUnwindSafe(|| x.exp())),
                             panic::catch_unwind(panic::AssertUnwindSafe(|| (-x).exp())),
                         ) {
-                            (Ok(exp_x), Ok(exp_neg_x)) => {
-                                Ok((exp_x + exp_neg_x) / Decimal::TWO)
-                            }
+                            (Ok(exp_x), Ok(exp_neg_x)) => Ok((exp_x + exp_neg_x) / Decimal::TWO),
                             _ => Err(FuncError::MathError {
                                 message: "Exponential overflow or underflow in cosh".to_string(),
                             }),
@@ -536,11 +536,10 @@ impl SymTable {
                         let y = args[1];
                         // hypot(x, y) = sqrt(x² + y²)
                         let sum_of_squares = x * x + y * y;
-                        sum_of_squares
-                            .sqrt()
-                            .ok_or_else(|| FuncError::MathError {
-                                message: "hypot: sqrt failed (should not happen for sum of squares)".to_string(),
-                            })
+                        sum_of_squares.sqrt().ok_or_else(|| FuncError::MathError {
+                            message: "hypot: sqrt failed (should not happen for sum of squares)"
+                                .to_string(),
+                        })
                     },
                     description: Some("Euclidean distance sqrt(x²+y²)".into()),
                 },

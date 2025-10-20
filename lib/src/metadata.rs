@@ -1,6 +1,7 @@
 //! Symbol metadata for bytecode validation and linking.
 
 use crate::symbol::Symbol;
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -8,19 +9,21 @@ use std::borrow::Cow;
 ///
 /// This is used to validate and remap symbol indices when linking
 /// bytecode with a symbol table.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub struct SymbolMetadata {
     /// The name of the symbol
     pub name: Cow<'static, str>,
     /// The kind and requirements of the symbol
     pub kind: SymbolKind,
     /// The resolved index in the linked symbol table (None until linked)
-    #[serde(skip)]
+    #[cfg_attr(feature = "serialization", serde(skip))]
     pub index: Option<usize>,
 }
 
 /// The kind of symbol (constant or function) with its requirements.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum SymbolKind {
     /// A constant value
     Const,

@@ -10,7 +10,7 @@
 //! - **Rich error messages** - Parse errors with syntax highlighting
 //! - **Bytecode compilation** - Compile once, execute many times
 //! - **Custom symbols** - Add your own constants and functions
-//! - **Serialization** - Save/load compiled programs to/from disk
+//! - **Serialization** - Save/load compiled programs (requires `serialization` feature)
 //!
 //! # Quick Start
 //!
@@ -144,6 +144,7 @@ pub fn eval_with_table(expression: &str, table: SymTable) -> Result<Decimal, Str
 ///
 /// let result = eval_file("expr.bin").unwrap();
 /// ```
+#[cfg(feature = "serialization")]
 pub fn eval_file(path: impl AsRef<str>) -> Result<Decimal, String> {
     eval_file_with_table(path, SymTable::stdlib())
 }
@@ -157,6 +158,7 @@ pub fn eval_file(path: impl AsRef<str>) -> Result<Decimal, String> {
 ///
 /// let result = eval_file_with_table("expr.bin", SymTable::stdlib()).unwrap();
 /// ```
+#[cfg(feature = "serialization")]
 pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<Decimal, String> {
     let program = Program::new_from_file(path.as_ref()).map_err(|err| err.to_string())?;
     let linked = program.link(table).map_err(|err| err.to_string())?;

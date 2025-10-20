@@ -10,6 +10,7 @@ use crate::symbol::{SymTable, Symbol};
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 use rust_decimal::Decimal;
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
@@ -17,6 +18,7 @@ use unicode_width::UnicodeWidthStr;
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Binary format for serialization
+#[cfg(feature = "serialization")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BinaryFormat {
     version: String,
@@ -28,10 +30,12 @@ struct BinaryFormat {
 #[derive(Debug, Clone)]
 pub enum ProgramOrigin {
     /// Loaded from a file (path stored)
+    #[cfg(feature = "serialization")]
     File(String),
     /// Compiled from source string
     Source,
     /// Deserialized from bytecode bytes
+    #[cfg(feature = "serialization")]
     Bytecode,
 }
 
@@ -140,6 +144,7 @@ impl<'src> Program<'src, Compiled> {
     ///
     /// let program = Program::new_from_file("expr.bin").unwrap();
     /// ```
+    #[cfg(feature = "serialization")]
     pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
         let path_str = path.into();
         let data = std::fs::read(&path_str)?;
@@ -149,6 +154,7 @@ impl<'src> Program<'src, Compiled> {
     /// Creates a compiled program from bytecode bytes.
     ///
     /// Deserializes the bytecode and validates the version.
+    #[cfg(feature = "serialization")]
     pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
         Self::from_bytecode(data, ProgramOrigin::Bytecode)
     }
@@ -225,6 +231,7 @@ impl<'src> Program<'src, Compiled> {
     // ========================================================================
 
     /// Internal helper to create program from bytecode with a specific origin.
+    #[cfg(feature = "serialization")]
     fn from_bytecode(data: &[u8], origin: ProgramOrigin) -> Result<Self, ProgramError> {
         let config = bincode::config::standard();
         let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
@@ -457,6 +464,7 @@ impl<'src> Program<'src, Linked> {
     /// Converts the program to bytecode bytes.
     ///
     /// This involves reverse-mapping the bytecode indices back to metadata indices.
+    #[cfg(feature = "serialization")]
     pub fn to_bytecode(&self) -> Result<Vec<u8>, ProgramError> {
         use std::collections::HashMap;
 
@@ -506,6 +514,7 @@ impl<'src> Program<'src, Linked> {
     }
 
     /// Saves the program bytecode to a file.
+    #[cfg(feature = "serialization")]
     pub fn save_bytecode_to_file(
         &self,
         path: impl AsRef<std::path::Path>,

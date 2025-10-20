@@ -352,6 +352,7 @@ fn test_program_symtable_mutation() {
 }
 
 #[test]
+#[cfg(feature = "serialization")]
 fn test_program_serialization() {
     let program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
 

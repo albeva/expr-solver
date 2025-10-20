@@ -36,6 +36,13 @@ Add this to your `Cargo.toml`:
 expr-solver-lib = "1.1.1"
 ```
 
+To enable bytecode serialization (save/load compiled expressions):
+
+```toml
+[dependencies]
+expr-solver-lib = { version = "1.1.1", features = ["serialization"] }
+```
+
 ### As a binary
 
 Add this to your `Cargo.toml`:

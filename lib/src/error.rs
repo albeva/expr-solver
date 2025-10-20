@@ -51,18 +51,22 @@ pub enum ProgramError {
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),
 
+    #[cfg(feature = "serialization")]
     #[error("Serialization error: {0}")]
     SerializationError(#[from] bincode::error::EncodeError),
 
+    #[cfg(feature = "serialization")]
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] bincode::error::DecodeError),
 
+    #[cfg(feature = "serialization")]
     #[error("Incompatible program version: expected {expected}, got {found}")]
     IncompatibleVersion { expected: String, found: String },
 
     #[error("Invalid symbol index: {0}")]
     InvalidSymbolIndex(usize),
 
+    #[cfg(feature = "serialization")]
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }
