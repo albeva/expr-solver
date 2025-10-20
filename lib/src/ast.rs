@@ -93,6 +93,12 @@ pub enum ExprKind {
     },
     /// Function call
     Call { name: String, args: Vec<Expr> },
+    /// Conditional expression
+    If {
+        cond: Box<Expr>,
+        then_branch: Box<Expr>,
+        else_branch: Box<Expr>,
+    },
 }
 
 impl Expr {
@@ -134,6 +140,17 @@ impl Expr {
     pub fn call(name: String, args: Vec<Expr>, span: Span) -> Self {
         Self {
             kind: ExprKind::Call { name, args },
+            span,
+        }
+    }
+
+    pub fn if_expr(cond: Expr, then_branch: Expr, else_branch: Expr, span: Span) -> Self {
+        Self {
+            kind: ExprKind::If {
+                cond: Box::new(cond),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            },
             span,
         }
     }

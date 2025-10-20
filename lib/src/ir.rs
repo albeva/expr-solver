@@ -25,4 +25,7 @@ pub enum Instr {
     LessEqual,
     Greater,
     GreaterEqual,
+    // Control flow
+    Jmp(usize), // Unconditional jump to instruction index
+    Jz(usize),  // Jump to instruction index if top of stack is zero (consumes value)
 }

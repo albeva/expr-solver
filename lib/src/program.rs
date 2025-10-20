@@ -349,6 +349,38 @@ impl<'src> Program<'src, Compiled> {
                 );
                 bytecode.push(Instr::Call(idx, args.len()));
             }
+            ExprKind::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                // Emit condition
+                Self::emit_instr(cond, bytecode, symbols);
+
+                // Emit Jz to else branch (placeholder, will be backpatched)
+                let jz_idx = bytecode.len();
+                bytecode.push(Instr::Jz(0)); // Placeholder
+
+                // Emit then branch
+                Self::emit_instr(then_branch, bytecode, symbols);
+
+                // Emit Jmp to end (placeholder, will be backpatched)
+                let jmp_idx = bytecode.len();
+                bytecode.push(Instr::Jmp(0)); // Placeholder
+
+                // else_start: This is where we jump if condition is false
+                let else_start = bytecode.len();
+
+                // Emit else branch
+                Self::emit_instr(else_branch, bytecode, symbols);
+
+                // end: This is where we jump after then branch
+                let end = bytecode.len();
+
+                // Backpatch the jump targets
+                bytecode[jz_idx] = Instr::Jz(else_start);
+                bytecode[jmp_idx] = Instr::Jmp(end);
+            }
         }
     }
 
@@ -567,6 +599,12 @@ impl<'src> Program<'src, Linked> {
                 Instr::LessEqual => format!("{}", "LTE".magenta()),
                 Instr::Greater => format!("{}", "GT".magenta()),
                 Instr::GreaterEqual => format!("{}", "GTE".magenta()),
+                Instr::Jmp(target) => {
+                    format!("{} {}", "JMP".magenta(), format!("{:04X}", target).yellow())
+                }
+                Instr::Jz(target) => {
+                    format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
+                }
             };
             let _ = writeln!(out, "{}", line);
         }

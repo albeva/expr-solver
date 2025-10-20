@@ -36,6 +36,8 @@ pub enum VmError {
     FunctionError(FuncError),
     #[error("Invalid symbol index: {0}")]
     InvalidSymbolIndex(usize),
+    #[error("Invalid jump: target {target} is out of bounds (program size: {size})")]
+    InvalidJump { target: usize, size: usize },
 }
 
 /// Stack-based virtual machine for executing bytecode programs.
@@ -56,15 +58,50 @@ impl Vm {
     /// - Invalid operations (e.g., factorial of non-integer)
     /// - Function errors
     /// - Invalid symbol indices
+    /// - Invalid jumps
     pub fn run_bytecode(&self, bytecode: &[Instr], table: &SymTable) -> Result<Decimal, VmError> {
         if bytecode.is_empty() {
             return Ok(Decimal::ZERO);
         }
 
         let mut stack: Vec<Decimal> = Vec::new();
+        let mut ip = 0; // Instruction pointer
 
-        for op in bytecode {
-            self.execute_instruction(op, table, &mut stack)?;
+        while ip < bytecode.len() {
+            let op = &bytecode[ip];
+
+            // Check for jump instructions and handle them specially
+            match op {
+                Instr::Jmp(target) => {
+                    if *target > bytecode.len() {
+                        return Err(VmError::InvalidJump {
+                            target: *target,
+                            size: bytecode.len(),
+                        });
+                    }
+                    ip = *target;
+                    continue;
+                }
+                Instr::Jz(target) => {
+                    if *target > bytecode.len() {
+                        return Err(VmError::InvalidJump {
+                            target: *target,
+                            size: bytecode.len(),
+                        });
+                    }
+                    let cond = Self::pop(&mut stack)?;
+                    if cond == Decimal::ZERO {
+                        ip = *target;
+                        continue;
+                    }
+                    // Otherwise, fall through to next instruction
+                }
+                _ => {
+                    self.execute_instruction(op, table, &mut stack)?;
+                }
+            }
+
+            ip += 1;
         }
 
         match stack.as_slice() {
@@ -122,6 +159,10 @@ impl Vm {
             Instr::LessEqual => self.comparison_op(stack, |a, b| a <= b),
             Instr::Greater => self.comparison_op(stack, |a, b| a > b),
             Instr::GreaterEqual => self.comparison_op(stack, |a, b| a >= b),
+            // Jump instructions are handled in run_bytecode()
+            Instr::Jmp(_) | Instr::Jz(_) => {
+                unreachable!("Jump instructions should be handled in run_bytecode")
+            }
         }
     }
 

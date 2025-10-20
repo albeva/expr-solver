@@ -112,7 +112,12 @@ impl<'src> Lexer<'src> {
             }
         }
         let s = &self.input[self.start..self.pos];
-        Token::Ident(s)
+        // Check for keywords (case-insensitive)
+        if s.eq_ignore_ascii_case("if") {
+            Token::If
+        } else {
+            Token::Ident(s)
+        }
     }
 
     fn peek(&mut self) -> Option<char> {
