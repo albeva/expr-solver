@@ -1,5 +1,5 @@
 use clap::{ArgAction, Parser};
-use expr_solver::{SymTable, Symbol, eval_file_with_table, load_with_table};
+use expr_solver::{Program, SymTable, Symbol};
 use rust_decimal::prelude::*;
 use std::path::PathBuf;
 
@@ -61,29 +61,31 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    // load either from string input or a file
-    if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
-        let program = load_with_table(expr, table)?;
-
-        if args.assembly {
-            print!("{}", program.get_assembly());
-            return Ok(());
-        }
-
-        // save to a file?
-        if let Some(output_path) = &args.output {
-            program
-                .save_bytecode_to_file(output_path)
-                .map_err(|e| e.to_string())?
-        } else {
-            let res = program.execute().map_err(|e| e.to_string())?;
-            println!("{res}");
-        }
-    } else if let Some(input) = &args.input {
-        let res = eval_file_with_table(input.to_string_lossy().as_ref(), table)?;
-        println!("{res}");
+    // Load input from either expression or file
+    let program = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
+        Program::new_from_source(expr)
+            .map_err(|err| err.to_string())?
+            .link(table)
+            .map_err(|err| err.to_string())?
+    } else if let Some(file) = &args.input {
+        Program::new_from_file(file.to_string_lossy().as_ref())
+            .map_err(|err| err.to_string())?
+            .link(table)
+            .map_err(|err| err.to_string())?
     } else {
         return Err("no input".to_string());
+    };
+
+    // Act on the loaded program
+    if args.assembly {
+        print!("{}", program.get_assembly());
+    } else if let Some(output_path) = &args.output {
+        program
+            .save_bytecode_to_file(output_path)
+            .map_err(|e| e.to_string())?;
+    } else {
+        let res = program.execute().map_err(|e| e.to_string())?;
+        println!("{res}");
     }
 
     Ok(())

@@ -1,4 +1,4 @@
-use expr_solver::{SymTable, eval, eval_with_table, load, load_with_table};
+use expr_solver::{Compiled, Linked, Program, SymTable, eval, eval_with_table};
 use indoc::indoc;
 use rust_decimal::{Decimal, MathematicalOps};
 use rust_decimal_macros::dec;
@@ -249,6 +249,18 @@ fn test_if_function_semantic_errors() {
 // ====================
 // Program API Tests
 // ====================
+
+fn load_with_table(
+    expr: &'static str,
+    table: SymTable,
+) -> Result<Program<'static, Linked>, String> {
+    let program = Program::new_from_source(expr).map_err(|err| err.to_string())?;
+    program.link(table).map_err(|err| err.to_string())
+}
+
+fn load(expr: &'static str) -> Result<Program<'static, Compiled>, String> {
+    Program::new_from_source(expr).map_err(|err| err.to_string())
+}
 
 #[test]
 fn test_program_basic_arithmetic() {

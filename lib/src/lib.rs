@@ -40,11 +40,11 @@
 //! The `Program` type uses the type-state pattern to enforce correct usage:
 //!
 //! ```
-//! use expr_solver::{load, SymTable};
+//! use expr_solver::{SymTable, Program};
 //! use rust_decimal_macros::dec;
 //!
 //! // Compile expression to bytecode
-//! let program = load("x + y").unwrap();
+//! let program = Program::new_from_source("x + y").unwrap();
 //!
 //! // Link with symbol table (validated at link time)
 //! let mut table = SymTable::new();
@@ -109,8 +109,7 @@ pub use vm::{Vm, VmError};
 /// assert_eq!(result.to_string(), "14");
 /// ```
 pub fn eval(expression: &str) -> Result<Decimal, String> {
-    let program = load_with_table(expression, SymTable::stdlib())?;
-    program.execute().map_err(|err| err.to_string())
+    eval_with_table(expression, SymTable::stdlib())
 }
 
 /// Evaluates an expression string with a custom symbol table.
@@ -128,8 +127,12 @@ pub fn eval(expression: &str) -> Result<Decimal, String> {
 /// assert_eq!(result, dec!(84));
 /// ```
 pub fn eval_with_table(expression: &str, table: SymTable) -> Result<Decimal, String> {
-    let program = load_with_table(expression, table)?;
-    program.execute().map_err(|err| err.to_string())
+    Program::new_from_source(expression)
+        .map_err(|err| err.to_string())?
+        .link(table)
+        .map_err(|err| err.to_string())?
+        .execute()
+        .map_err(|err| err.to_string())
 }
 
 /// Evaluates an expression from a binary file with the standard library.
@@ -158,35 +161,4 @@ pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<De
     let program = Program::new_from_file(path.as_ref()).map_err(|err| err.to_string())?;
     let linked = program.link(table).map_err(|err| err.to_string())?;
     linked.execute().map_err(|err| err.to_string())
-}
-
-/// Loads and compiles an expression, returning a compiled program.
-///
-/// # Examples
-///
-/// ```
-/// use expr_solver::{load, SymTable};
-///
-/// let program = load("2 + 3 * 4").unwrap();
-/// let linked = program.link(SymTable::stdlib()).unwrap();
-/// let result = linked.execute().unwrap();
-/// assert_eq!(result.to_string(), "14");
-/// ```
-pub fn load(expression: &str) -> Result<Program<'_, Compiled>, String> {
-    Program::new_from_source(expression).map_err(|err| err.to_string())
-}
-
-/// Loads, compiles, and links an expression, returning a ready-to-execute program.
-///
-/// # Examples
-///
-/// ```
-/// use expr_solver::{load_with_table, SymTable};
-///
-/// let program = load_with_table("sin(pi/2)", SymTable::stdlib()).unwrap();
-/// let result = program.execute().unwrap();
-/// ```
-pub fn load_with_table(expression: &str, table: SymTable) -> Result<Program<'_, Linked>, String> {
-    let program = load(expression)?;
-    program.link(table).map_err(|err| err.to_string())
 }
