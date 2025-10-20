@@ -13,6 +13,18 @@ A mathematical expression evaluator library written in Rust with support for cus
 - **Bytecode compilation** - Compile expressions to portable binary format
 - **Stack-based VM** - Efficient execution on a virtual machine
 
+## What's it For?
+
+Need to evaluate math but don't want to embed an entire scripting language? You're in the right place. 🎯
+
+**Perfect for:**
+- **Game engines** - Calculate damage formulas, level requirements, or item stats without hardcoding values
+- **Configuration files** - Let users write `price * 0.9` instead of forcing them to update every value manually
+- **Analytics dashboards** - Enable power users to define custom metrics: `(revenue - cost) / users`
+- **Form calculators** - Mortgage calculators, unit converters, or any user-facing math
+- **Educational tools** - Math tutoring apps, graphing calculators, or homework helpers
+- **Learning compilers** - Clean example of lexer, parser, and stack-based VM in ~2K lines of Rust
+
 ## How It Works
 
 Classic compiler pipeline with type-safe state transitions:
