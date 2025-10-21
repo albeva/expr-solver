@@ -45,7 +45,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-lib = "1.1.1"
+expr-solver-lib = "1.2.0"
 ```
 
 **Numeric Type Selection:**
@@ -59,21 +59,21 @@ To use high-precision Decimal:
 
 ```toml
 [dependencies]
-expr-solver-lib = { version = "1.1.1", default-features = false, features = ["decimal-precision"] }
+expr-solver-lib = { version = "1.2.0", default-features = false, features = ["decimal-precision"] }
 ```
 
 To enable bytecode serialization with f64:
 
 ```toml
 [dependencies]
-expr-solver-lib = { version = "1.1.1", features = ["serialization"] }
+expr-solver-lib = { version = "1.2.0", features = ["serialization"] }
 ```
 
 To enable bytecode serialization with Decimal:
 
 ```toml
 [dependencies]
-expr-solver-lib = { version = "1.1.1", default-features = false, features = ["decimal-precision", "serialization"] }
+expr-solver-lib = { version = "1.2.0", default-features = false, features = ["decimal-precision", "serialization"] }
 ```
 
 ### As a binary
@@ -82,7 +82,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-expr-solver-bin = "1.1.1"
+expr-solver-bin = "1.2.0"
 ```
 
 ### Quick Evaluation
