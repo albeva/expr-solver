@@ -191,6 +191,39 @@ impl<'src> Program<'src, Compiled> {
         })
     }
 
+    /// Returns the source code if available.
+    pub fn source(&self) -> Option<&str> {
+        self.source
+    }
+
+    /// Returns a reference to the compiled bytecode.
+    pub fn bytecode(&self) -> &[Instr] {
+        &self.state.bytecode
+    }
+
+    /// Returns a reference to the symbol metadata.
+    pub fn symbols(&self) -> &[SymbolMetadata] {
+        &self.state.symbols
+    }
+
+    /// Returns a syntax-highlighted string representation of the expression.
+    ///
+    /// This is a convenience method that delegates to [`Print`].
+    /// For custom styling, use [`Print::with_style()`] instead.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use expr_solver::Program;
+    ///
+    /// let program = Program::new_from_source("let x = 10 then x * 2").unwrap();
+    /// let highlighted = program.get_string();
+    /// println!("{}", highlighted);
+    /// ```
+    pub fn get_string(&self) -> String {
+        crate::print::Print::new(self).to_string()
+    }
+
     // ========================================================================
     // Private helpers
     // ========================================================================
@@ -274,74 +307,37 @@ impl<'src> Program<'src, Linked> {
         &mut self.state.symtable
     }
 
+    /// Returns a reference to the symbol table.
+    pub fn symtable(&self) -> &SymTable {
+        &self.state.symtable
+    }
+
+    /// Returns a reference to the linked bytecode.
+    pub fn bytecode(&self) -> &[Instr] {
+        &self.state.bytecode
+    }
+
+    /// Returns the program version.
+    pub fn version(&self) -> &str {
+        &self.state.version
+    }
+
+    /// Returns a syntax-highlighted string representation of the expression.
+    ///
+    /// Note: Linked programs don't have access to the original source,
+    /// so this returns a placeholder message.
+    ///
+    /// This is a convenience method that delegates to [`Print`].
+    pub fn get_string(&self) -> String {
+        crate::print::Print::new(self).get_expr()
+    }
+
     /// Returns a human-readable assembly representation of the program.
+    ///
+    /// This is a convenience method that delegates to [`Print::assembly()`].
+    /// For custom styling, use [`Print::with_style()`] instead.
     pub fn get_assembly(&self) -> String {
-        use std::fmt::Write as _;
-
-        let mut out = String::new();
-        out += &format!("; VERSION {}\n", self.state.version)
-            .bright_black()
-            .to_string();
-
-        for (i, instr) in self.state.bytecode.iter().enumerate() {
-            let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
-            let line = match instr {
-                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
-                Instr::Load(idx) => {
-                    let sym_name = self
-                        .state
-                        .symtable
-                        .get_by_index(*idx)
-                        .map(|s| s.name())
-                        .expect("Symbol not found in assembly");
-                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
-                }
-                Instr::Store(idx) => {
-                    let sym_name = self
-                        .state
-                        .symtable
-                        .get_by_index(*idx)
-                        .map(|s| s.name())
-                        .expect("Symbol not found in assembly");
-                    format!("{} {}", "STORE".magenta(), sym_name.blue())
-                }
-                Instr::Neg => format!("{}", "NEG".magenta()),
-                Instr::Add => format!("{}", "ADD".magenta()),
-                Instr::Sub => format!("{}", "SUB".magenta()),
-                Instr::Mul => format!("{}", "MUL".magenta()),
-                Instr::Div => format!("{}", "DIV".magenta()),
-                Instr::Pow => format!("{}", "POW".magenta()),
-                Instr::Fact => format!("{}", "FACT".magenta()),
-                Instr::Call(idx, argc) => {
-                    let sym_name = self
-                        .state
-                        .symtable
-                        .get_by_index(*idx)
-                        .map(|s| s.name())
-                        .expect("Symbol not found in assembly");
-                    format!(
-                        "{} {} args: {}",
-                        "CALL".magenta(),
-                        sym_name.cyan(),
-                        argc.to_string().bright_blue()
-                    )
-                }
-                Instr::Equal => format!("{}", "EQ".magenta()),
-                Instr::NotEqual => format!("{}", "NEQ".magenta()),
-                Instr::Less => format!("{}", "LT".magenta()),
-                Instr::LessEqual => format!("{}", "LTE".magenta()),
-                Instr::Greater => format!("{}", "GT".magenta()),
-                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
-                Instr::Jmp(target) => {
-                    format!("{} {}", "JMP".magenta(), format!("{:04X}", target).yellow())
-                }
-                Instr::Jz(target) => {
-                    format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
-                }
-            };
-            let _ = writeln!(out, "{}", line);
-        }
-        out
+        crate::print::Print::new(self).assembly()
     }
 
     /// Converts the program to bytecode bytes.

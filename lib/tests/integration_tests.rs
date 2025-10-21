@@ -544,3 +544,77 @@ fn test_let_if_serialization_roundtrip() {
     // result = if(15 < 20, 45, 5) = 45
     assert_eq!(result1, num!(45));
 }
+
+// ============================================================================
+// Print tests - syntax highlighting and assembly printing
+// ============================================================================
+
+#[test]
+fn test_print_expression_with_source() {
+    use expr_solver::{Print, Program};
+
+    // Test that Print can display source with highlighting
+    let source = "let x = 10 then x * 2";
+    let program = Program::new_from_source(source).expect("Failed to compile");
+    let printer = Print::new(&program);
+
+    // Just verify it doesn't panic - actual colors won't be visible in test output
+    let output = printer.to_string();
+    assert!(output.len() > 0, "Printed output should not be empty");
+    // The output should contain the keywords and expressions
+    assert!(output.contains("let"));
+    assert!(output.contains("then"));
+}
+
+#[test]
+fn test_print_assembly_for_linked() {
+    use expr_solver::{Print, Program, SymTable};
+
+    let source = "2 + 3 * 4";
+    let program = Program::new_from_source(source).expect("Failed to compile");
+    let linked = program.link(SymTable::stdlib()).expect("Failed to link");
+    let printer = Print::new(&linked);
+
+    // Print assembly
+    let assembly = printer.assembly();
+    assert!(assembly.len() > 0, "Assembly should not be empty");
+
+    // Check for expected instructions
+    assert!(assembly.contains("PUSH"));
+    assert!(assembly.contains("MUL"));
+    assert!(assembly.contains("ADD"));
+}
+
+#[test]
+fn test_print_get_assembly_convenience() {
+    use expr_solver::{Program, SymTable};
+
+    let source = "sin(pi)";
+    let program = Program::new_from_source(source).expect("Failed to compile");
+    let linked = program.link(SymTable::stdlib()).expect("Failed to link");
+
+    // Test the convenience method
+    let assembly = linked.get_assembly();
+    assert!(assembly.len() > 0, "Assembly should not be empty");
+    assert!(assembly.contains("LOAD"));
+    assert!(assembly.contains("CALL"));
+}
+
+#[test]
+fn test_print_custom_style() {
+    use colored::Color;
+    use expr_solver::{ExprStyle, Print, Program};
+
+    let source = "let x = 10 then x * 2";
+    let program = Program::new_from_source(source).expect("Failed to compile");
+
+    // Create custom style
+    let mut style = ExprStyle::new();
+    style.keyword_color = Color::Red;
+    style.keyword_bold = false;
+
+    let printer = Print::with_style(&program, style);
+    let output = printer.to_string();
+
+    assert!(output.len() > 0, "Printed output should not be empty");
+}
