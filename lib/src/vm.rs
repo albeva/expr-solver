@@ -424,25 +424,25 @@ mod tests {
     fn test_binary_operations() {
         let mut table = SymTable::stdlib();
 
-        // Test all binary operations using string comparison
+        // Test all binary operations
         let test_cases = vec![
             (
                 vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
-                "4",
+                num!(4),
             ),
             (
                 vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
-                "12",
+                num!(12),
             ),
             (
                 vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
-                "4",
+                num!(4),
             ),
         ];
 
         for (code, expected) in test_cases {
             let result = Vm::run(&code, &mut table).unwrap();
-            assert_eq!(result.to_string(), expected);
+            assert_eq!(result, expected);
         }
     }
 }

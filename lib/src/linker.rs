@@ -23,7 +23,7 @@
 //! // linked_bytecode is ready to execute on the VM
 //! ```
 
-use crate::error::{LinkError, LinkerError};
+use crate::error::LinkerError;
 use crate::ir::Instr;
 use crate::metadata::{SymbolKind, SymbolMetadata};
 use crate::num;
@@ -106,7 +106,7 @@ impl Linker {
     }
 
     /// Validates that a symbol matches the expected kind.
-    fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkError> {
+    fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkerError> {
         match (&metadata.kind, symbol) {
             (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
             (
@@ -134,19 +134,19 @@ impl Linker {
                     } else {
                         format!("exactly {} arguments", min_args)
                     };
-                    Err(LinkError::TypeMismatch {
+                    Err(LinkerError::TypeMismatch {
                         name: metadata.name.to_string(),
                         expected: expected_msg,
                         found: format!("{} arguments provided", arity),
                     })
                 }
             }
-            (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkError::TypeMismatch {
+            (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkerError::TypeMismatch {
                 name: metadata.name.to_string(),
                 expected: "constant".to_string(),
                 found: "function".to_string(),
             }),
-            (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkError::TypeMismatch {
+            (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkerError::TypeMismatch {
                 name: metadata.name.to_string(),
                 expected: "function".to_string(),
                 found: "constant".to_string(),

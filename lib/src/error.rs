@@ -33,22 +33,15 @@ pub enum IrError {
     SymbolError(#[from] SymbolError),
 }
 
-/// Errors that can occur during linking.
+/// Errors that can occur during the linking process.
 #[derive(Error, Debug)]
-pub enum LinkError {
-    #[error("Type mismatch for symbol '{name}': expected {expected}, found {found}")]
+pub enum LinkerError {
+    #[error("Link error: Type mismatch for symbol '{name}': expected {expected}, found {found}")]
     TypeMismatch {
         name: String,
         expected: String,
         found: String,
     },
-}
-
-/// Errors that can occur during the linking process.
-#[derive(Error, Debug)]
-pub enum LinkerError {
-    #[error("Link error: {0}")]
-    LinkError(#[from] LinkError),
 
     #[error("{0}")]
     SymbolError(#[from] SymbolError),
@@ -65,9 +58,6 @@ pub enum ProgramError {
 
     #[error("{0}")]
     LinkerError(#[from] LinkerError),
-
-    #[error("Link error: {0}")]
-    LinkError(#[from] LinkError),
 
     #[error("{0}")]
     VmError(#[from] crate::vm::VmError),

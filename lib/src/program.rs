@@ -65,7 +65,7 @@ pub enum ProgramOrigin {
 /// let mut linked = program.link(table).unwrap();
 ///
 /// // Execute
-/// assert_eq!(linked.execute().unwrap().to_string(), "11");
+/// assert_eq!(linked.execute().unwrap(), num!(11));
 /// ```
 #[derive(Debug)]
 pub struct Program<'src, State> {
