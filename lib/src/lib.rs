@@ -90,6 +90,7 @@ mod vm;
 // Expression solver implementation
 mod ast;
 mod error;
+mod ir_builder;
 mod lexer;
 mod metadata;
 mod parser;
@@ -97,7 +98,7 @@ mod program;
 
 // Public API
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
-pub use error::{LinkError, ParseError, ProgramError};
+pub use error::{IrError, LinkError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;

@@ -26,6 +26,13 @@ impl SpanError for ParseError {
     }
 }
 
+/// Errors that can occur during IR (bytecode) generation.
+#[derive(Error, Debug)]
+pub enum IrError {
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
+}
+
 /// Errors that can occur during linking.
 #[derive(Error, Debug)]
 pub enum LinkError {
@@ -42,6 +49,9 @@ pub enum LinkError {
 pub enum ProgramError {
     #[error("{0}")]
     ParseError(String),
+
+    #[error("{0}")]
+    IrError(#[from] IrError),
 
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),

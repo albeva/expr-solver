@@ -1,0 +1,172 @@
+//! IR (bytecode) builder for compiling AST to bytecode.
+
+use crate::ast::{Expr, ExprKind};
+use crate::error::IrError;
+use crate::ir::Instr;
+use crate::metadata::{SymbolKind, SymbolMetadata};
+use std::borrow::Cow::Owned;
+
+/// Builder for generating bytecode from an AST.
+///
+/// The builder maintains state during compilation including the bytecode
+/// instructions and symbol metadata table.
+#[derive(Debug, Default)]
+pub struct IrBuilder {
+    bytecode: Vec<Instr>,
+    symbols: Vec<SymbolMetadata>,
+}
+
+impl IrBuilder {
+    /// Creates a new IR builder.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builds bytecode from an AST expression.
+    ///
+    /// This is the main entry point for compilation.
+    pub fn build(mut self, ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), IrError> {
+        // Handle let declarations at the top level
+        let body = if let ExprKind::Let { decls, body } = &ast.kind {
+            self.emit_let(decls)?;
+            body
+        } else {
+            ast
+        };
+
+        // Emit the main expression body
+        self.emit_expr(body);
+
+        Ok((self.bytecode, self.symbols))
+    }
+
+    /// Emits let declarations.
+    fn emit_let(&mut self, decls: &[(&str, Expr)]) -> Result<(), IrError> {
+        for (name, value_expr) in decls {
+            // Check for duplicate declarations
+            if self.symbols.iter().any(|meta| meta.name == *name) {
+                return Err(crate::SymbolError::DuplicateSymbol(name.to_string()).into());
+            }
+
+            // Emit bytecode for the value expression
+            self.emit_expr(value_expr);
+
+            // Declare local symbol
+            let idx = self.symbols.len();
+            self.symbols.push(SymbolMetadata {
+                name: Owned(name.to_string()),
+                kind: SymbolKind::Const,
+                local: true,
+                index: None,
+            });
+
+            // Store the value
+            self.bytecode.push(Instr::Store(idx));
+        }
+        Ok(())
+    }
+
+    /// Emits bytecode for an expression.
+    fn emit_expr(&mut self, expr: &Expr) {
+        match &expr.kind {
+            ExprKind::Literal(v) => {
+                self.bytecode.push(Instr::Push(*v));
+            }
+            ExprKind::Ident { name } => {
+                let idx = self.get_or_create_symbol(name, SymbolKind::Const);
+                self.bytecode.push(Instr::Load(idx));
+            }
+            ExprKind::Unary { op, expr } => {
+                self.emit_expr(expr);
+                self.bytecode.push((*op).into());
+            }
+            ExprKind::Binary { op, left, right } => {
+                self.emit_expr(left);
+                self.emit_expr(right);
+                self.bytecode.push((*op).into());
+            }
+            ExprKind::Call { name, args } => {
+                self.emit_call(name, args);
+            }
+            ExprKind::If {
+                cond,
+                then_branch,
+                else_branch,
+            } => {
+                self.emit_if(cond, then_branch, else_branch);
+            }
+            ExprKind::Let { body, .. } => {
+                // Nested lets: only emit the body
+                // (declarations were processed at the top level)
+                self.emit_expr(body);
+            }
+        }
+    }
+
+    /// Emits bytecode for an if expression.
+    fn emit_if(&mut self, cond: &Expr, then_branch: &Expr, else_branch: &Expr) {
+        // Emit condition
+        self.emit_expr(cond);
+
+        // Emit Jz to else branch (placeholder, will be backpatched)
+        let jz_idx = self.bytecode.len();
+        self.bytecode.push(Instr::Jz(0)); // Placeholder
+
+        // Emit then branch
+        self.emit_expr(then_branch);
+
+        // Emit Jmp to end (placeholder, will be backpatched)
+        let jmp_idx = self.bytecode.len();
+        self.bytecode.push(Instr::Jmp(0)); // Placeholder
+
+        // else_start: This is where we jump if condition is false
+        let else_start = self.bytecode.len();
+
+        // Emit else branch
+        self.emit_expr(else_branch);
+
+        // end: This is where we jump after then branch
+        let end = self.bytecode.len();
+
+        // Backpatch the jump targets
+        self.bytecode[jz_idx] = Instr::Jz(else_start);
+        self.bytecode[jmp_idx] = Instr::Jmp(end);
+    }
+
+    /// Emits bytecode for a function call.
+    fn emit_call(&mut self, name: &str, args: &[Expr]) {
+        // Emit arguments first
+        for arg in args {
+            self.emit_expr(arg);
+        }
+
+        // Get or create symbol index for this function
+        let idx = self.get_or_create_symbol(
+            name,
+            SymbolKind::Func {
+                arity: args.len(),
+                variadic: false,
+            },
+        );
+        self.bytecode.push(Instr::Call(idx, args.len()));
+    }
+
+    /// Gets existing symbol index or creates a new one.
+    ///
+    /// For ~50 symbols, linear search is faster than HashMap overhead.
+    fn get_or_create_symbol(&mut self, name: &str, kind: SymbolKind) -> usize {
+        // Check if symbol already exists
+        if let Some(pos) = self.symbols.iter().position(|s| s.name == name) {
+            return pos;
+        }
+
+        // Create new symbol entry
+        self.symbols.push(SymbolMetadata {
+            name: name.to_string().into(),
+            kind,
+            local: false,
+            index: None,
+        });
+        self.symbols.len() - 1
+    }
+}

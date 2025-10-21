@@ -1,7 +1,7 @@
 //! Type-state program implementation for compile-link-execute workflow.
 
-use super::ast::{Expr, ExprKind};
 use super::error::{LinkError, ParseError, ProgramError};
+use super::ir_builder::IrBuilder;
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use crate::ir::Instr;
@@ -14,7 +14,6 @@ use crate::vm::{Vm, VmError};
 use colored::Colorize;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow::Owned;
 use unicode_width::UnicodeWidthStr;
 
 /// Current version of the program format
@@ -116,7 +115,7 @@ impl<'src> Program<'src, Compiled> {
 
         // Compile (handle empty input by creating empty bytecode)
         let (bytecode, symbols) = if let Some(ast) = ast_opt {
-            Self::generate_bytecode(&ast)?
+            IrBuilder::new().build(&ast)?
         } else {
             // Empty input -> empty program (VM will return 0)
             (Vec::new(), Vec::new())
@@ -270,162 +269,6 @@ impl<'src> Program<'src, Compiled> {
             }
         }
         out
-    }
-
-    /// Generates bytecode and collects symbol metadata in a single AST traversal.
-    /// Also extracts and compiles let declarations for evaluation during linking.
-    fn generate_bytecode(ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), ProgramError> {
-        let mut bytecode = Vec::new();
-        let mut symbols: Vec<SymbolMetadata> = Vec::new();
-
-        // Handle local symbols
-        let body = if let ExprKind::Let { decls, body } = &ast.kind {
-            for decl in decls {
-                // ensure we are not re-declaring a symbol
-                if symbols.iter().any(|meta| meta.name == *decl.0) {
-                    return Err(crate::SymbolError::DuplicateSymbol(decl.0.to_string()).into());
-                }
-
-                // expression
-                Self::emit_instr(&(*decl).1, &mut bytecode, &mut symbols);
-                // declare local symbol
-                let idx = symbols.len();
-                symbols.push(SymbolMetadata {
-                    name: Owned((*decl.0).to_string()),
-                    kind: SymbolKind::Const,
-                    local: true,
-                    index: None,
-                });
-                // Store the value
-                bytecode.push(Instr::Store(idx));
-            }
-            body
-        } else {
-            ast
-        };
-
-        // Emit the expression instructions
-        Self::emit_instr(body, &mut bytecode, &mut symbols);
-
-        // Done
-        Ok((bytecode, symbols))
-    }
-
-    /// Emits bytecode instructions for an expression node.
-    fn emit_instr(expr: &Expr, bytecode: &mut Vec<Instr>, symbols: &mut Vec<SymbolMetadata>) {
-        match &expr.kind {
-            ExprKind::Literal(v) => {
-                bytecode.push(Instr::Push(*v));
-            }
-            ExprKind::Ident { name } => {
-                // Get or create index for this constant
-                let idx = Self::get_or_create_symbol(name, SymbolKind::Const, symbols);
-                bytecode.push(Instr::Load(idx));
-            }
-            ExprKind::Unary { op, expr } => {
-                Self::emit_instr(expr, bytecode, symbols);
-                bytecode.push((*op).into());
-            }
-            ExprKind::Binary { op, left, right } => {
-                Self::emit_instr(left, bytecode, symbols);
-                Self::emit_instr(right, bytecode, symbols);
-                bytecode.push((*op).into());
-            }
-            ExprKind::Call { name, args } => Self::emit_call(*name, args, bytecode, symbols),
-            ExprKind::If {
-                cond,
-                then_branch,
-                else_branch,
-            } => Self::emit_if(cond, then_branch, else_branch, bytecode, symbols),
-            ExprKind::Let { body, .. } => {
-                // Let declarations are evaluated at link-time, not compile-time
-                // Only emit bytecode for the body expression
-                // The declarations will be processed during linking
-                Self::emit_instr(body, bytecode, symbols);
-            }
-        }
-    }
-
-    /// Emit bytecode for IF expression
-    fn emit_if(
-        cond: &Expr,
-        then_branch: &Expr,
-        else_branch: &Expr,
-        bytecode: &mut Vec<Instr>,
-        symbols: &mut Vec<SymbolMetadata>,
-    ) {
-        // Emit condition
-        Self::emit_instr(cond, bytecode, symbols);
-
-        // Emit Jz to else branch (placeholder, will be backpatched)
-        let jz_idx = bytecode.len();
-        bytecode.push(Instr::Jz(0)); // Placeholder
-
-        // Emit then branch
-        Self::emit_instr(then_branch, bytecode, symbols);
-
-        // Emit Jmp to end (placeholder, will be backpatched)
-        let jmp_idx = bytecode.len();
-        bytecode.push(Instr::Jmp(0)); // Placeholder
-
-        // else_start: This is where we jump if condition is false
-        let else_start = bytecode.len();
-
-        // Emit else branch
-        Self::emit_instr(else_branch, bytecode, symbols);
-
-        // end: This is where we jump after then branch
-        let end = bytecode.len();
-
-        // Backpatch the jump targets
-        bytecode[jz_idx] = Instr::Jz(else_start);
-        bytecode[jmp_idx] = Instr::Jmp(end);
-    }
-
-    /// Emit bytecode for func call
-    fn emit_call(
-        name: &str,
-        args: &[Expr],
-        bytecode: &mut Vec<Instr>,
-        symbols: &mut Vec<SymbolMetadata>,
-    ) {
-        // Emit arguments first
-        for arg in args {
-            Self::emit_instr(arg, bytecode, symbols);
-        }
-
-        // Get or create index for this function
-        let idx = Self::get_or_create_symbol(
-            name,
-            SymbolKind::Func {
-                arity: args.len(),
-                variadic: false,
-            },
-            symbols,
-        );
-        bytecode.push(Instr::Call(idx, args.len()));
-    }
-
-    /// Gets existing symbol index or creates a new one.
-    /// For ~50 symbols, linear search is faster than HashMap overhead.
-    fn get_or_create_symbol(
-        name: &str,
-        kind: SymbolKind,
-        symbols: &mut Vec<SymbolMetadata>,
-    ) -> usize {
-        // Check if symbol already exists
-        if let Some(pos) = symbols.iter().position(|s| s.name == name) {
-            return pos;
-        }
-
-        // Create new symbol entry
-        symbols.push(SymbolMetadata {
-            name: name.to_string().into(),
-            kind,
-            local: false,
-            index: None,
-        });
-        symbols.len() - 1
     }
 
     /// Validates that a symbol matches the expected kind.
