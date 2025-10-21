@@ -26,15 +26,25 @@ impl SpanError for ParseError {
     }
 }
 
-/// Errors that can occur during linking.
+/// Errors that can occur during IR (bytecode) generation.
 #[derive(Error, Debug)]
-pub enum LinkError {
-    #[error("Type mismatch for symbol '{name}': expected {expected}, found {found}")]
+pub enum IrError {
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
+}
+
+/// Errors that can occur during the linking process.
+#[derive(Error, Debug)]
+pub enum LinkerError {
+    #[error("Link error: Type mismatch for symbol '{name}': expected {expected}, found {found}")]
     TypeMismatch {
         name: String,
         expected: String,
         found: String,
     },
+
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
 }
 
 /// Errors that can occur during program operations.
@@ -43,8 +53,11 @@ pub enum ProgramError {
     #[error("{0}")]
     ParseError(String),
 
-    #[error("Link error: {0}")]
-    LinkError(#[from] LinkError),
+    #[error("{0}")]
+    IrError(#[from] IrError),
+
+    #[error("{0}")]
+    LinkerError(#[from] LinkerError),
 
     #[error("{0}")]
     VmError(#[from] crate::vm::VmError),

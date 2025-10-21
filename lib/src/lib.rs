@@ -5,11 +5,12 @@
 //!
 //! # Features
 //!
-//! - **Type-safe compilation** - Uses Rust's type system to enforce correct pipeline order
 //! - **Flexible numeric types** - Choose between f64 (default) or 128-bit Decimal precision
 //! - **Rich error messages** - Parse errors with syntax highlighting
 //! - **Bytecode compilation** - Compile once, execute many times
 //! - **Custom symbols** - Add your own constants and functions
+//! - **Local constants** - `let` ... `then` syntax for declaring scoped constants
+//! - **Control flow** - Conditional expressions with `if(condition, then, else)`
 //! - **Serialization** - Save/load compiled programs (requires `serialization` feature)
 //!
 //! ## Numeric Type Selection
@@ -27,12 +28,25 @@
 //! # Quick Start
 //!
 //! ```
-//! use expr_solver::eval;
+//! use expr_solver::{eval, num};
 //!
-//! // Simple evaluation
 //! let result = eval("2 + 3 * 4").unwrap();
-//! assert_eq!(result.to_string(), "14");
+//! assert_eq!(result, num!(14));
 //! ```
+//!
+//! ## Working with Numbers
+//!
+//! Use the [`num!`] macro to create numeric values that work with both f64 and Decimal backends:
+//!
+//! ```
+//! use expr_solver::num;
+//!
+//! let x = num!(42);      // Works with any backend
+//! let y = num!(3.14);    // Supports decimals
+//! let z = num!(-10);     // And negative numbers
+//! ```
+//!
+//! The macro ensures your code works regardless of which numeric backend is enabled.
 //!
 //! # Custom Symbols
 //!
@@ -43,7 +57,7 @@
 //! table.add_const("x", num!(10), false).unwrap();
 //!
 //! let result = eval_with_table("x * 2", table).unwrap();
-//! assert_eq!(result.to_string(), "20");
+//! assert_eq!(result, num!(20));
 //! ```
 //!
 //! # Advanced: Type-State Pattern
@@ -65,18 +79,62 @@
 //!
 //! // Execute
 //! let result = linked.execute().unwrap();
-//! assert_eq!(result.to_string(), "15");
+//! assert_eq!(result, num!(15));
 //! ```
+//!
+//! # Local Constants with LET THEN
+//!
+//! Declare local constants using `let` ... `then` syntax:
+//!
+//! ```
+//! use expr_solver::{eval, num};
+//!
+//! // Single declaration
+//! let result = eval("let x = 10 then x * 2").unwrap();
+//! assert_eq!(result, num!(20));
+//!
+//! // Multiple declarations
+//! let result = eval("let x = 5, y = 3 then x + y").unwrap();
+//! assert_eq!(result, num!(8));
+//!
+//! // Reference previous declarations
+//! let result = eval("let x = 2, y = x * 3, z = y + 1 then z").unwrap();
+//! assert_eq!(result, num!(7));
+//!
+//! // Use with globals and functions
+//! let result = eval("let r = 5, area = pi * r ^ 2 then area").unwrap();
+//! assert!((result - num!(78.53981633974483)).abs() < num!(0.0001));
+//! ```
+//!
+//! **Notes:**
+//! - Local constants are evaluated left-to-right
+//! - Can reference previously declared locals and globals
+//! - Cannot reference forward (e.g., `let x = y, y = 1 then x` is an error)
+//! - Cannot shadow global constants (e.g., `let pi = 3 then pi` is an error)
+//! - Duplicate names in the same `let` block are errors
 //!
 //! # Supported Operators
 //!
 //! - Arithmetic: `+`, `-`, `*`, `/`, `^` (power), `!` (factorial), unary `-`
 //! - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (return 1 or 0)
 //! - Grouping: `(` `)`
+//! - Control flow: `if(condition, then_value, else_value)`
 //!
 //! # Built-in Functions
 //!
 //! See [`SymTable::stdlib()`] for the complete list of built-in functions and constants.
+//!
+//! # Architecture
+//!
+//! The library uses a multi-stage compilation pipeline:
+//!
+//! 1. **Parsing** ([`Parser`]) - Source code → Abstract Syntax Tree (AST)
+//! 2. **IR Generation** ([`IrBuilder`]) - AST → Bytecode + Symbol metadata
+//! 3. **Linking** ([`Linker`]) - Bytecode + SymTable → Linked bytecode
+//! 4. **Execution** ([`Vm`]) - Linked bytecode → Result
+//!
+//! Each stage has its own error type ([`ParseError`], [`IrError`], [`LinkerError`], [`VmError`])
+//! which automatically converts to [`ProgramError`] for convenience.
 
 // Core types (shared)
 mod ir;
@@ -90,14 +148,16 @@ mod vm;
 // Expression solver implementation
 mod ast;
 mod error;
+mod ir_builder;
 mod lexer;
+mod linker;
 mod metadata;
 mod parser;
 mod program;
 
 // Public API
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
-pub use error::{LinkError, ParseError, ProgramError};
+pub use error::{IrError, LinkerError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;
@@ -115,10 +175,10 @@ pub use vm::{Vm, VmError};
 /// # Examples
 ///
 /// ```
-/// use expr_solver::eval;
+/// use expr_solver::{eval, num};
 ///
 /// let result = eval("2 + 3 * 4").unwrap();
-/// assert_eq!(result.to_string(), "14");
+/// assert_eq!(result, num!(14));
 /// ```
 pub fn eval(expression: &str) -> Result<Number, String> {
     eval_with_table(expression, SymTable::stdlib())
@@ -135,7 +195,7 @@ pub fn eval(expression: &str) -> Result<Number, String> {
 /// table.add_const("x", num!(42), false).unwrap();
 ///
 /// let result = eval_with_table("x * 2", table).unwrap();
-/// assert_eq!(result.to_string(), "84");
+/// assert_eq!(result, num!(84));
 /// ```
 pub fn eval_with_table(expression: &str, table: SymTable) -> Result<Number, String> {
     Program::new_from_source(expression)

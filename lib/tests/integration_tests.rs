@@ -501,3 +501,46 @@ fn test_let_case_insensitive_keywords() {
     assert_eq!(eval_ok("Let x = 5 Then x * 2"), num!(10));
     assert_eq!(eval_ok("leT x = 3, y = 7 tHeN x + y"), num!(10));
 }
+
+// ============================================================================
+// Serialization Tests with LET and IF
+// ============================================================================
+
+#[test]
+#[cfg(feature = "serialization")]
+fn test_let_if_serialization_roundtrip() {
+    use expr_solver::Program;
+
+    // Complex expression with LET and IF in both declaration and body
+    // let a = if(5 > 3, 10, 20),
+    //     b = if(a > 15, a * 2, a + 5)
+    // then if(b < 20, b * 3, b - 10)
+    let source =
+        "let a = if(5 > 3, 10, 20), b = if(a > 15, a * 2, a + 5) then if(b < 20, b * 3, b - 10)";
+
+    // Compile and execute original
+    let program = Program::new_from_source(source).expect("Failed to compile");
+    let table = SymTable::stdlib();
+    let mut linked = program.link(table.clone()).expect("Failed to link");
+    let result1 = linked.execute().expect("Failed to execute");
+
+    // Serialize to bytecode
+    let bytecode = linked.to_bytecode().expect("Failed to serialize");
+
+    // Deserialize from bytecode
+    let loaded_program = Program::new_from_bytecode(&bytecode).expect("Failed to deserialize");
+    let mut relinked = loaded_program.link(table).expect("Failed to relink");
+    let result2 = relinked.execute().expect("Failed to execute reloaded");
+
+    // Results should be identical
+    assert_eq!(
+        result1, result2,
+        "Serialization roundtrip produced different result"
+    );
+
+    // Verify the actual computation is correct:
+    // a = if(5 > 3, 10, 20) = 10
+    // b = if(10 > 15, 20, 15) = 15
+    // result = if(15 < 20, 45, 5) = 45
+    assert_eq!(result1, num!(45));
+}
