@@ -297,7 +297,7 @@ impl<'src> Program<'src, Compiled> {
                 // declare local symbol
                 let idx = symbols.len();
                 symbols.push(SymbolMetadata {
-                    name: Owned((*decl.0).to_string()), // TODO: can we not clone string?
+                    name: Owned((*decl.0).to_string()),
                     kind: SymbolKind::Const,
                     local: true,
                     index: None,
