@@ -92,13 +92,14 @@ mod ast;
 mod error;
 mod ir_builder;
 mod lexer;
+mod linker;
 mod metadata;
 mod parser;
 mod program;
 
 // Public API
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
-pub use error::{IrError, LinkError, ParseError, ProgramError};
+pub use error::{IrError, LinkError, LinkerError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;

@@ -44,6 +44,16 @@ pub enum LinkError {
     },
 }
 
+/// Errors that can occur during the linking process.
+#[derive(Error, Debug)]
+pub enum LinkerError {
+    #[error("Link error: {0}")]
+    LinkError(#[from] LinkError),
+
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
+}
+
 /// Errors that can occur during program operations.
 #[derive(Error, Debug)]
 pub enum ProgramError {
@@ -52,6 +62,9 @@ pub enum ProgramError {
 
     #[error("{0}")]
     IrError(#[from] IrError),
+
+    #[error("{0}")]
+    LinkerError(#[from] LinkerError),
 
     #[error("Link error: {0}")]
     LinkError(#[from] LinkError),

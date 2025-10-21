@@ -1,14 +1,13 @@
 //! Type-state program implementation for compile-link-execute workflow.
 
-use super::error::{LinkError, ParseError, ProgramError};
+use super::error::{ParseError, ProgramError};
 use super::ir_builder::IrBuilder;
-use super::metadata::{SymbolKind, SymbolMetadata};
+use super::linker::Linker;
+use super::metadata::SymbolMetadata;
 use super::parser::Parser;
 use crate::ir::Instr;
-use crate::num;
 use crate::number::Number;
 use crate::span::SpanError;
-use crate::symbol::Symbol;
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
@@ -168,42 +167,17 @@ impl<'src> Program<'src, Compiled> {
     /// let program = Program::new_from_source("sin(pi)").unwrap();
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// ```
-    pub fn link(mut self, mut table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
-        // Validate symbols and fill in their resolved indices
-        for metadata in &mut self.state.symbols {
-            let resolved_idx = if metadata.local {
-                let idx = table.symbols().count();
-                table.add_const(metadata.name.to_string(), num!(0), true)?;
-                idx
-            } else {
-                let (idx, symbol) = table.get_with_index(&metadata.name)?;
-                Self::validate_symbol_kind(metadata, symbol)?;
-                idx
-            };
-
-            // Store resolved index in metadata
-            metadata.index = Some(resolved_idx);
-        }
-
-        // Rewrite all indices in bytecode using resolved indices from metadata
-        for instr in &mut self.state.bytecode {
-            match instr {
-                Instr::Load(idx) | Instr::Store(idx) | Instr::Call(idx, _) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                _ => {}
-            }
-        }
+    pub fn link(self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+        let linker = Linker::new(self.state.bytecode, self.state.symbols, table);
+        let (bytecode, symtable) = linker.link()?;
 
         Ok(Program {
             source: self.source,
             state: Linked {
                 origin: self.state.origin,
                 version: self.state.version,
-                bytecode: self.state.bytecode,
-                symtable: table,
+                bytecode,
+                symtable,
             },
         })
     }
@@ -271,54 +245,6 @@ impl<'src> Program<'src, Compiled> {
         out
     }
 
-    /// Validates that a symbol matches the expected kind.
-    fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkError> {
-        match (&metadata.kind, symbol) {
-            (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
-            (
-                SymbolKind::Func { arity, .. },
-                Symbol::Func {
-                    args: min_args,
-                    variadic,
-                    ..
-                },
-            ) => {
-                // Check if the call is valid:
-                // - For non-variadic: arity must match exactly
-                // - For variadic: arity must be >= min_args
-                let valid = if *variadic {
-                    arity >= min_args
-                } else {
-                    arity == min_args
-                };
-
-                if valid {
-                    Ok(())
-                } else {
-                    let expected_msg = if *variadic {
-                        format!("at least {} arguments", min_args)
-                    } else {
-                        format!("exactly {} arguments", min_args)
-                    };
-                    Err(LinkError::TypeMismatch {
-                        name: metadata.name.to_string(),
-                        expected: expected_msg,
-                        found: format!("{} arguments provided", arity),
-                    })
-                }
-            }
-            (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.to_string(),
-                expected: "constant".to_string(),
-                found: "function".to_string(),
-            }),
-            (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.to_string(),
-                expected: "function".to_string(),
-                found: "constant".to_string(),
-            }),
-        }
-    }
 }
 
 // ============================================================================
