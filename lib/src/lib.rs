@@ -8,6 +8,7 @@
 //! - **Flexible numeric types** - Choose between f64 (default) or 128-bit Decimal precision
 //! - **Rich error messages** - Parse errors with syntax highlighting
 //! - **Bytecode compilation** - Compile once, execute many times
+//! - **Pretty printing** - Decompile bytecode to syntax-highlighted expressions
 //! - **Custom symbols** - Add your own constants and functions
 //! - **Local constants** - `let` ... `then` syntax for declaring scoped constants
 //! - **Control flow** - Conditional expressions with `if(condition, then, else)`
@@ -58,6 +59,47 @@
 //!
 //! let result = eval_with_table("x * 2", table).unwrap();
 //! assert_eq!(result, num!(20));
+//! ```
+//!
+//! # Pretty Printing
+//!
+//! The library can decompile bytecode back to syntax-highlighted expressions:
+//!
+//! ```
+//! use expr_solver::{Program, Print};
+//!
+//! let program = Program::new_from_source("let x = 10 then x * 2").unwrap();
+//!
+//! // Print syntax-highlighted expression
+//! println!("{}", program.get_string());
+//! // Or use the Print type directly
+//! println!("{}", Print::new(&program));
+//! ```
+//!
+//! For linked programs, you can print assembly output:
+//!
+//! ```
+//! use expr_solver::{Program, SymTable};
+//!
+//! let program = Program::new_from_source("2 + 3 * 4").unwrap();
+//! let linked = program.link(SymTable::stdlib()).unwrap();
+//!
+//! // Print assembly
+//! println!("{}", linked.get_assembly());
+//! ```
+//!
+//! Customize colors using [`ExprStyle`]:
+//!
+//! ```
+//! use expr_solver::{Program, Print, ExprStyle};
+//! use colored::Color;
+//!
+//! let program = Program::new_from_source("2 + 3").unwrap();
+//! let mut style = ExprStyle::new();
+//! style.operator_color = Color::Red;
+//!
+//! let printer = Print::with_style(&program, style);
+//! println!("{}", printer);
 //! ```
 //!
 //! # Advanced: Type-State Pattern
