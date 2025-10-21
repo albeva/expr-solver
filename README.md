@@ -7,11 +7,12 @@ A mathematical expression evaluator library written in Rust with support for cus
 ## Features
 
 - **Mathematical expressions** - Arithmetic, comparisons, and built-in functions
-- **Flexible numeric types** - Choose between fast f64 (default) or high-precision 128-bit Decimal
+- **Flexible numeric types** - Choose between fast f64 or high-precision 128-bit Decimal
 - **Custom symbols** - Register your own constants and functions
 - **Rich error messages** - Syntax errors with source location highlighting
 - **Bytecode compilation** - Compile expressions to portable binary format
 - **Stack-based VM** - Efficient execution on a virtual machine
+- **Pretty printing** - Decompile bytecode to syntax-highlighted expressions (optional feature)
 
 ## What's it For?
 
@@ -76,14 +77,22 @@ To enable bytecode serialization with Decimal:
 expr-solver-lib = { version = "1.2.0", default-features = false, features = ["decimal-precision", "serialization"] }
 ```
 
-### As a binary
+**Optional Features:**
 
-Add this to your `Cargo.toml`:
+- **`printing`** (enabled by default) - Pretty printing and syntax highlighting. Disable to reduce dependencies:
+  ```toml
+  expr-solver-lib = { version = "1.2.0", default-features = false, features = ["f64-floats"] }
+  ```
 
-```toml
-[dependencies]
-expr-solver-bin = "1.2.0"
+### As a Command-Line Tool
+
+Install using cargo:
+
+```bash
+cargo install expr-solver-bin
 ```
+
+The command-line tool uses **Decimal precision by default** for maximum accuracy.
 
 ### Quick Evaluation
 
@@ -195,21 +204,38 @@ The library supports two numeric backends:
 ```bash
 # Evaluate an expression
 expr-solver "2 + 3 * 4"
+# Output: 14
 
 # Use the -e flag
 expr-solver -e "sin(pi/2)"
+# Output: 1
 
 # Define custom constants
 expr-solver -D x=10 -D y=20 "x + y"
+# Output: 30
 
-# Compile to binary
+# Print syntax-highlighted expression (decompiled from bytecode)
+expr-solver -e "let x = 10 then x * 2" --print
+# Output: let x = 10 then x * 2
+
+# View assembly (bytecode instructions)
+expr-solver -e "2 + 3 * 4" --assembly
+# Output:
+# ; VERSION 1.2.0
+# 0000 PUSH 2
+# 0001 PUSH 3
+# 0002 PUSH 4
+# 0003 MUL
+# 0004 ADD
+
+# Compile to binary file
 expr-solver -e "2+3*4" -o expr.bin
 
 # Execute compiled binary
 expr-solver -i expr.bin
+# Output: 14
 
-# View assembly from expression or file
-expr-solver -e "2+3" -a
+# View assembly from compiled file
 expr-solver -i expr.bin -a
 
 # Recompile bytecode (e.g., version migration)
@@ -218,6 +244,10 @@ expr-solver -i old.bin -o new.bin
 # List available functions and constants
 expr-solver -t
 ```
+
+**Note:** The command-line tool uses **128-bit Decimal precision** by default for accurate calculations:
+- `0.1 + 0.2` correctly equals `0.3` (no floating-point errors)
+- `1 / 3` displays 28 decimal places: `0.3333333333333333333333333333`
 
 ## Testing
 
