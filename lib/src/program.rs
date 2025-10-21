@@ -7,7 +7,7 @@ use super::parser::Parser;
 use crate::ir::Instr;
 use crate::num;
 use crate::number::Number;
-use crate::span::{Span, SpanError};
+use crate::span::SpanError;
 use crate::symbol::Symbol;
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
@@ -55,7 +55,7 @@ pub enum ProgramOrigin {
 /// // Link with symbol table
 /// let mut table = SymTable::new();
 /// table.add_const("x", num!(5), false).unwrap();
-/// let linked = program.link(table).unwrap();
+/// let mut linked = program.link(table).unwrap();
 ///
 /// // Execute
 /// assert_eq!(linked.execute().unwrap().to_string(), "11");
@@ -108,24 +108,19 @@ impl<'src> Program<'src, Compiled> {
 
         // Parse
         let mut parser = Parser::new(trimmed);
-        let ast = parser
-            .parse()
-            .map_err(|parse_err| {
-                // Format error with source highlighting
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
-            })?
-            .ok_or_else(|| {
-                // TODO: parser returning None is valid, we should not be raising an error here
-                //       maybe add empty expression node to ast or something?
-                let parse_err = ParseError::UnexpectedEof {
-                    span: Span::new(0, 0),
-                };
-                ProgramError::ParseError(format!("{}", parse_err))
-            })?;
+        let ast_opt = parser.parse().map_err(|parse_err| {
+            // Format error with source highlighting
+            let highlighted = Self::highlight_error(trimmed, &parse_err);
+            ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
+        })?;
 
-        // Compile
-        let (bytecode, symbols) = Self::generate_bytecode(&ast);
+        // Compile (handle empty input by creating empty bytecode)
+        let (bytecode, symbols) = if let Some(ast) = ast_opt {
+            Self::generate_bytecode(&ast)?
+        } else {
+            // Empty input -> empty program (VM will return 0)
+            (Vec::new(), Vec::new())
+        };
 
         Ok(Program {
             source: Some(trimmed),
@@ -178,11 +173,22 @@ impl<'src> Program<'src, Compiled> {
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
             let resolved_idx = if metadata.local {
+                // Check if trying to shadow a global symbol
+                if table.get_by_name(&metadata.name).is_ok() {
+                    return Err(LinkError::RedefinedSymbol {
+                        name: metadata.name.to_string(),
+                    }
+                    .into());
+                }
                 let idx = table.symbols().count();
                 table.add_const(metadata.name.to_string(), num!(0), true)?;
                 idx
             } else {
-                let (idx, symbol) = table.get_with_index(&metadata.name)?;
+                let (idx, symbol) = table.get_with_index(&metadata.name).map_err(|_| {
+                    LinkError::MissingSymbol {
+                        name: metadata.name.to_string(),
+                    }
+                })?;
                 Self::validate_symbol_kind(metadata, symbol)?;
                 idx
             };
@@ -279,7 +285,7 @@ impl<'src> Program<'src, Compiled> {
 
     /// Generates bytecode and collects symbol metadata in a single AST traversal.
     /// Also extracts and compiles let declarations for evaluation during linking.
-    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
+    fn generate_bytecode(ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), ProgramError> {
         let mut bytecode = Vec::new();
         let mut symbols: Vec<SymbolMetadata> = Vec::new();
 
@@ -287,9 +293,11 @@ impl<'src> Program<'src, Compiled> {
         let body = if let ExprKind::Let { decls, body } = &ast.kind {
             for decl in decls {
                 // ensure we are not re-declaring a symbol
-                if symbols.iter().find(|meta| meta.name == *decl.0).is_some() {
-                    // TODO: Return and propagate an error properly
-                    panic!("Symbol `{}` declared multiple times", decl.0);
+                if symbols.iter().any(|meta| meta.name == *decl.0) {
+                    return Err(ProgramError::ParseError(format!(
+                        "Symbol `{}` declared multiple times",
+                        decl.0
+                    )));
                 }
 
                 // expression
@@ -314,7 +322,7 @@ impl<'src> Program<'src, Compiled> {
         Self::emit_instr(body, &mut bytecode, &mut symbols);
 
         // Done
-        (bytecode, symbols)
+        Ok((bytecode, symbols))
     }
 
     /// Emits bytecode instructions for an expression node.
@@ -496,6 +504,11 @@ impl<'src> Program<'src, Linked> {
     /// Executes the program and returns the result.
     pub fn execute(&mut self) -> Result<Number, VmError> {
         Vm::run(&self.state.bytecode, &mut self.state.symtable)
+    }
+
+    /// Returns a mutable reference to the symbol table.
+    pub fn symtable_mut(&mut self) -> &mut SymTable {
+        &mut self.state.symtable
     }
 
     /// Returns a human-readable assembly representation of the program.

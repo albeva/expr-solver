@@ -373,76 +373,76 @@ mod tests {
     use crate::num;
     use crate::symtable::SymTable;
 
-    // #[test]
-    // fn test_vm_error_stack_underflow() {
-    //     let table = SymTable::stdlib();
-    //     let bytecode = vec![Instr::Add]; // No values on stack
-    //
-    //     let result = Vm::run(&bytecode, &table);
-    //     assert!(matches!(result, Err(VmError::StackUnderflow)));
-    // }
-    //
-    // #[test]
-    // fn test_vm_error_division_by_zero() {
-    //     let table = SymTable::stdlib();
-    //     let bytecode = vec![Instr::Push(num!(5)), Instr::Push(num!(0)), Instr::Div];
-    //
-    //     let result = Vm::run(&bytecode, &table);
-    //     assert!(matches!(result, Err(VmError::DivisionByZero)));
-    // }
-    //
-    // #[test]
-    // fn test_vm_error_invalid_final_stack() {
-    //     let table = SymTable::stdlib();
-    //     let bytecode = vec![
-    //         Instr::Push(num!(1)),
-    //         Instr::Push(num!(2)),
-    //         // No operation to combine them
-    //     ];
-    //
-    //     let result = Vm::run(&bytecode, &table);
-    //     assert!(matches!(
-    //         result,
-    //         Err(VmError::InvalidFinalStack { count: 2 })
-    //     ));
-    // }
-    //
-    // #[test]
-    // fn test_vm_error_display() {
-    //     assert_eq!(
-    //         VmError::StackUnderflow.to_string(),
-    //         "Stack underflow: attempted to pop from empty stack"
-    //     );
-    //     assert_eq!(VmError::DivisionByZero.to_string(), "Division by zero");
-    //     assert_eq!(
-    //         VmError::InvalidFinalStack { count: 3 }.to_string(),
-    //         "Invalid stack state at program end: expected 1 element, found 3"
-    //     );
-    // }
-    //
-    // #[test]
-    // fn test_binary_operations() {
-    //     let table = SymTable::stdlib();
-    //
-    //     // Test all binary operations using string comparison
-    //     let test_cases = vec![
-    //         (
-    //             vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
-    //             "4",
-    //         ),
-    //         (
-    //             vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
-    //             "12",
-    //         ),
-    //         (
-    //             vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
-    //             "4",
-    //         ),
-    //     ];
-    //
-    //     for (code, expected) in test_cases {
-    //         let result = Vm::run(&code, &table).unwrap();
-    //         assert_eq!(result.to_string(), expected);
-    //     }
-    // }
+    #[test]
+    fn test_vm_error_stack_underflow() {
+        let mut table = SymTable::stdlib();
+        let bytecode = vec![Instr::Add]; // No values on stack
+
+        let result = Vm::run(&bytecode, &mut table);
+        assert!(matches!(result, Err(VmError::StackUnderflow)));
+    }
+
+    #[test]
+    fn test_vm_error_division_by_zero() {
+        let mut table = SymTable::stdlib();
+        let bytecode = vec![Instr::Push(num!(5)), Instr::Push(num!(0)), Instr::Div];
+
+        let result = Vm::run(&bytecode, &mut table);
+        assert!(matches!(result, Err(VmError::DivisionByZero)));
+    }
+
+    #[test]
+    fn test_vm_error_invalid_final_stack() {
+        let mut table = SymTable::stdlib();
+        let bytecode = vec![
+            Instr::Push(num!(1)),
+            Instr::Push(num!(2)),
+            // No operation to combine them
+        ];
+
+        let result = Vm::run(&bytecode, &mut table);
+        assert!(matches!(
+            result,
+            Err(VmError::InvalidFinalStack { count: 2 })
+        ));
+    }
+
+    #[test]
+    fn test_vm_error_display() {
+        assert_eq!(
+            VmError::StackUnderflow.to_string(),
+            "Stack underflow: attempted to pop from empty stack"
+        );
+        assert_eq!(VmError::DivisionByZero.to_string(), "Division by zero");
+        assert_eq!(
+            VmError::InvalidFinalStack { count: 3 }.to_string(),
+            "Invalid stack state at program end: expected 1 element, found 3"
+        );
+    }
+
+    #[test]
+    fn test_binary_operations() {
+        let mut table = SymTable::stdlib();
+
+        // Test all binary operations using string comparison
+        let test_cases = vec![
+            (
+                vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
+                "4",
+            ),
+            (
+                vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
+                "12",
+            ),
+            (
+                vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
+                "4",
+            ),
+        ];
+
+        for (code, expected) in test_cases {
+            let result = Vm::run(&code, &mut table).unwrap();
+            assert_eq!(result.to_string(), expected);
+        }
+    }
 }

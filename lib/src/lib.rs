@@ -61,7 +61,7 @@
 //! table.add_const("x", num!(10), false).unwrap();
 //! table.add_const("y", num!(5), false).unwrap();
 //!
-//! let linked = program.link(table).unwrap();
+//! let mut linked = program.link(table).unwrap();
 //!
 //! // Execute
 //! let result = linked.execute().unwrap();

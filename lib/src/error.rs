@@ -29,6 +29,9 @@ impl SpanError for ParseError {
 /// Errors that can occur during linking.
 #[derive(Error, Debug)]
 pub enum LinkError {
+    #[error("Missing symbol: '{name}' is required by bytecode but not in symbol table")]
+    MissingSymbol { name: String },
+
     #[error("Type mismatch for symbol '{name}': expected {expected}, found {found}")]
     TypeMismatch {
         name: String,
@@ -49,7 +52,7 @@ pub enum ProgramError {
     #[error("{0}")]
     ParseError(String),
 
-    #[error("{0}")]
+    #[error("Link error: {0}")]
     LinkError(#[from] LinkError),
 
     #[error("{0}")]
