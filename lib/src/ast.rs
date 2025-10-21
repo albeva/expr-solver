@@ -1,8 +1,8 @@
 //! Abstract Syntax Tree for mathematical expressions.
 
+use crate::number::Number;
 use crate::span::Span;
 use crate::token::Token;
-use rust_decimal::Decimal;
 
 /// Unary operators: negation and factorial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,8 +13,8 @@ pub enum UnOp {
     Fact,
 }
 
-impl UnOp {
-    pub fn from_token(token: &Token) -> Self {
+impl From<Token<'_>> for UnOp {
+    fn from(token: Token) -> Self {
         match token {
             Token::Minus => UnOp::Neg,
             Token::Bang => UnOp::Fact,
@@ -50,8 +50,8 @@ pub enum BinOp {
     GreaterEqual,
 }
 
-impl BinOp {
-    pub fn from_token(token: &Token) -> Self {
+impl From<Token<'_>> for BinOp {
+    fn from(token: Token) -> Self {
         match token {
             Token::Plus => BinOp::Add,
             Token::Minus => BinOp::Sub,
@@ -71,46 +71,60 @@ impl BinOp {
 
 /// Expression node in the AST with source location.
 #[derive(Debug, Clone)]
-pub struct Expr {
-    pub kind: ExprKind,
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
     pub span: Span,
 }
 
 /// Expression kind representing different types of expressions.
 #[derive(Debug, Clone)]
-pub enum ExprKind {
+pub enum ExprKind<'src> {
     /// Numeric literal
-    Literal(Decimal),
+    Literal(Number),
     /// Identifier (constant or variable)
-    Ident { name: String },
+    Ident { name: &'src str },
     /// Unary operation
-    Unary { op: UnOp, expr: Box<Expr> },
+    Unary { op: UnOp, expr: Box<Expr<'src>> },
     /// Binary operation
     Binary {
         op: BinOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
+        left: Box<Expr<'src>>,
+        right: Box<Expr<'src>>,
     },
     /// Function call
-    Call { name: String, args: Vec<Expr> },
+    Call {
+        name: &'src str,
+        args: Vec<Expr<'src>>,
+    },
+    /// Conditional expression
+    If {
+        cond: Box<Expr<'src>>,
+        then_branch: Box<Expr<'src>>,
+        else_branch: Box<Expr<'src>>,
+    },
+    /// Let expression with local constant declarations
+    Let {
+        decls: Vec<(&'src str, Expr<'src>)>,
+        body: Box<Expr<'src>>,
+    },
 }
 
-impl Expr {
-    pub fn literal(value: Decimal, span: Span) -> Self {
+impl<'src> Expr<'src> {
+    pub fn literal(value: Number, span: Span) -> Self {
         Self {
             kind: ExprKind::Literal(value),
             span,
         }
     }
 
-    pub fn ident(name: String, span: Span) -> Self {
+    pub fn ident(name: &'src str, span: Span) -> Self {
         Self {
             kind: ExprKind::Ident { name },
             span,
         }
     }
 
-    pub fn unary(op: UnOp, expr: Expr, span: Span) -> Self {
+    pub fn unary(op: UnOp, expr: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Unary {
                 op,
@@ -120,7 +134,7 @@ impl Expr {
         }
     }
 
-    pub fn binary(op: BinOp, left: Expr, right: Expr, span: Span) -> Self {
+    pub fn binary(op: BinOp, left: Expr<'src>, right: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Binary {
                 op,
@@ -131,9 +145,35 @@ impl Expr {
         }
     }
 
-    pub fn call(name: String, args: Vec<Expr>, span: Span) -> Self {
+    pub fn call(name: &'src str, args: Vec<Expr<'src>>, span: Span) -> Self {
         Self {
             kind: ExprKind::Call { name, args },
+            span,
+        }
+    }
+
+    pub fn if_expr(
+        cond: Expr<'src>,
+        then_branch: Expr<'src>,
+        else_branch: Expr<'src>,
+        span: Span,
+    ) -> Self {
+        Self {
+            kind: ExprKind::If {
+                cond: Box::new(cond),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            },
+            span,
+        }
+    }
+
+    pub fn let_expr(decls: Vec<(&'src str, Expr<'src>)>, body: Expr<'src>, span: Span) -> Self {
+        Self {
+            kind: ExprKind::Let {
+                decls,
+                body: Box::new(body),
+            },
             span,
         }
     }

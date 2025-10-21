@@ -1,11 +1,8 @@
 use crate::ir::Instr;
-use crate::symbol::{FuncError, SymTable, Symbol};
-use rust_decimal::Decimal;
-use rust_decimal::prelude::*;
+use crate::number::Number;
+use crate::symbol::{FuncError, Symbol};
+use crate::symtable::SymTable;
 use thiserror::Error;
-
-#[cfg(test)]
-use rust_decimal_macros::dec;
 
 /// Virtual machine runtime errors.
 #[derive(Error, Debug, Clone)]
@@ -16,37 +13,38 @@ pub enum VmError {
     DivisionByZero,
     #[error("Invalid stack state at program end: expected 1 element, found {count}")]
     InvalidFinalStack { count: usize },
-    #[error("Invalid load operation: cannot load '{symbol_name}' as a constant")]
-    InvalidLoad { symbol_name: String },
-    #[error("Invalid call operation: cannot call '{symbol_name}' as a function")]
-    InvalidCall { symbol_name: String },
-    #[error(
-        "Stack underflow on function call '{function_name}': expected {expected} arguments, found {found}"
-    )]
-    CallStackUnderflow {
-        function_name: String,
-        expected: usize,
-        found: usize,
-    },
     #[error("Invalid factorial: {value} (must be a non-negative integer)")]
-    InvalidFactorial { value: Decimal },
+    InvalidFactorial { value: Number },
     #[error("Arithmetic error: {message}")]
     ArithmeticError { message: String },
     #[error("Function error: {0}")]
     FunctionError(FuncError),
-    #[error("Invalid symbol index: {0}")]
-    InvalidSymbolIndex(usize),
 }
 
 /// Stack-based virtual machine for executing bytecode programs.
 ///
 /// The VM evaluates programs by executing bytecode instructions on a stack,
 /// performing arithmetic operations and function calls.
-#[derive(Debug, Default)]
-pub struct Vm;
+///
+/// ## Error Handling
+///
+/// Behavior varies based on the numeric backend:
+///
+/// - **f64 mode**: Relaxed error handling. Only catches errors that would cause panics.
+///   Allows `Inf` and `NaN` results from operations like `1/0` or `sqrt(-1)`.
+///
+/// - **Decimal mode**: Strict error handling. All arithmetic operations are checked
+///   for overflow/underflow. Returns errors for domain violations.
+#[derive(Debug)]
+pub struct Vm<'vm> {
+    bytecode: &'vm [Instr],
+    symtable: &'vm mut SymTable,
+    stack: Vec<Number>,
+    ip: usize,
+}
 
-impl Vm {
-    /// Executes bytecode directly and returns the result.
+impl<'vm> Vm<'vm> {
+    /// Executes bytecode and returns the result.
     ///
     /// # Errors
     ///
@@ -56,131 +54,185 @@ impl Vm {
     /// - Invalid operations (e.g., factorial of non-integer)
     /// - Function errors
     /// - Invalid symbol indices
-    pub fn run_bytecode(&self, bytecode: &[Instr], table: &SymTable) -> Result<Decimal, VmError> {
+    /// - Invalid jumps
+    pub fn run(bytecode: &'vm [Instr], symtable: &'vm mut SymTable) -> Result<Number, VmError> {
+        use crate::number::consts;
+
         if bytecode.is_empty() {
-            return Ok(Decimal::ZERO);
+            return Ok(consts::ZERO);
         }
 
-        let mut stack: Vec<Decimal> = Vec::new();
-
-        for op in bytecode {
-            self.execute_instruction(op, table, &mut stack)?;
-        }
-
-        match stack.as_slice() {
-            [result] => Ok(*result),
-            _ => Err(VmError::InvalidFinalStack { count: stack.len() }),
-        }
-    }
-
-    fn execute_instruction(
-        &self,
-        op: &Instr,
-        table: &SymTable,
-        stack: &mut Vec<Decimal>,
-    ) -> Result<(), VmError> {
-        match op {
-            Instr::Push(v) => {
-                stack.push(*v);
-                Ok(())
-            }
-            Instr::Load(idx) => {
-                let sym = table
-                    .get_by_index(*idx)
-                    .ok_or(VmError::InvalidSymbolIndex(*idx))?;
-                match sym {
-                    Symbol::Const { value, .. } => {
-                        stack.push(*value);
-                        Ok(())
-                    }
-                    _ => Err(VmError::InvalidLoad {
-                        symbol_name: sym.name().to_string(),
-                    }),
-                }
-            }
-            Instr::Neg => {
-                let v = Self::pop(stack)?;
-                stack.push(-v);
-                Ok(())
-            }
-            Instr::Add => self.add_op(stack),
-            Instr::Sub => self.sub_op(stack),
-            Instr::Mul => self.mul_op(stack),
-            Instr::Div => self.div_op(stack),
-            Instr::Pow => self.pow_op(stack),
-            Instr::Fact => self.fact_op(stack),
-            Instr::Call(idx, argc) => {
-                let sym = table
-                    .get_by_index(*idx)
-                    .ok_or(VmError::InvalidSymbolIndex(*idx))?;
-                self.call_op(sym, *argc, stack)
-            }
-            // Comparison operators
-            Instr::Equal => self.comparison_op(stack, |a, b| a == b),
-            Instr::NotEqual => self.comparison_op(stack, |a, b| a != b),
-            Instr::Less => self.comparison_op(stack, |a, b| a < b),
-            Instr::LessEqual => self.comparison_op(stack, |a, b| a <= b),
-            Instr::Greater => self.comparison_op(stack, |a, b| a > b),
-            Instr::GreaterEqual => self.comparison_op(stack, |a, b| a >= b),
-        }
-    }
-
-    fn comparison_op<F>(&self, stack: &mut Vec<Decimal>, f: F) -> Result<(), VmError>
-    where
-        F: FnOnce(Decimal, Decimal) -> bool,
-    {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
-        let result = if f(left, right) {
-            Decimal::ONE
-        } else {
-            Decimal::ZERO
+        let mut vm = Vm {
+            bytecode,
+            symtable,
+            stack: Vec::new(),
+            ip: 0,
         };
-        stack.push(result);
+
+        vm.execute()?;
+
+        match vm.stack.as_slice() {
+            [result] => Ok(*result),
+            _ => Err(VmError::InvalidFinalStack {
+                count: vm.stack.len(),
+            }),
+        }
+    }
+
+    fn execute(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+
+        while self.ip < self.bytecode.len() {
+            let op = &self.bytecode[self.ip];
+
+            match op {
+                Instr::Jmp(target) => {
+                    self.ip = *target;
+                    continue;
+                }
+                Instr::Jz(target) => {
+                    let cond = self.pop()?;
+                    if cond == consts::ZERO {
+                        self.ip = *target;
+                        continue;
+                    }
+                }
+                Instr::Push(v) => {
+                    self.stack.push(*v);
+                }
+                Instr::Load(idx) => {
+                    let sym = self.symtable.get_by_index(*idx).unwrap();
+                    match sym {
+                        Symbol::Const { value, .. } => {
+                            self.stack.push(*value);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                Instr::Store(idx) => {
+                    let top = self.pop()?;
+                    let sym = self.symtable.get_mut_by_index(*idx).unwrap();
+                    match sym {
+                        Symbol::Const { value, .. } => {
+                            *value = top;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                Instr::Neg => {
+                    let v = self.pop()?;
+                    self.stack.push(-v);
+                }
+                Instr::Add => self.add_op()?,
+                Instr::Sub => self.sub_op()?,
+                Instr::Mul => self.mul_op()?,
+                Instr::Div => self.div_op()?,
+                Instr::Pow => self.pow_op()?,
+                Instr::Fact => self.fact_op()?,
+                Instr::Call(idx, argc) => self.call_op(*idx, *argc)?,
+                Instr::Equal => self.comparison_op(|a, b| a == b)?,
+                Instr::NotEqual => self.comparison_op(|a, b| a != b)?,
+                Instr::Less => self.comparison_op(|a, b| a < b)?,
+                Instr::LessEqual => self.comparison_op(|a, b| a <= b)?,
+                Instr::Greater => self.comparison_op(|a, b| a > b)?,
+                Instr::GreaterEqual => self.comparison_op(|a, b| a >= b)?,
+            }
+
+            self.ip += 1;
+        }
         Ok(())
     }
 
-    fn add_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    fn comparison_op<F>(&mut self, f: F) -> Result<(), VmError>
+    where
+        F: FnOnce(Number, Number) -> bool,
+    {
+        use crate::number::consts;
+
+        let right = self.pop()?;
+        let left = self.pop()?;
+        let result = if f(left, right) {
+            consts::ONE
+        } else {
+            consts::ZERO
+        };
+        self.stack.push(result);
+        Ok(())
+    }
+
+    // Decimal mode: use checked arithmetic for safety
+    #[cfg(feature = "decimal-precision")]
+    fn add_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_add(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Addition overflow: {} + {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn sub_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    // f64 mode: use simple arithmetic (Inf/NaN allowed)
+    #[cfg(feature = "f64-floats")]
+    fn add_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left + right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
+    fn sub_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_sub(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Subtraction overflow: {} - {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn mul_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    #[cfg(feature = "f64-floats")]
+    fn sub_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left - right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
+    fn mul_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left
             .checked_mul(right)
             .ok_or_else(|| VmError::ArithmeticError {
                 message: format!("Multiplication overflow: {} * {}", left, right),
             })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn div_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let right = Self::pop(stack)?;
-        let left = Self::pop(stack)?;
+    #[cfg(feature = "f64-floats")]
+    fn mul_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        self.stack.push(left * right);
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
+    fn div_op(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+
+        let right = self.pop()?;
+        let left = self.pop()?;
         let result = left.checked_div(right).ok_or_else(|| {
-            if right.is_zero() {
+            if right == consts::ZERO {
                 VmError::DivisionByZero
             } else {
                 VmError::ArithmeticError {
@@ -188,31 +240,65 @@ impl Vm {
                 }
             }
         })?;
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn pow_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let exponent = Self::pop(stack)?;
-        let base = Self::pop(stack)?;
-
-        // Use Decimal's powd with error handling
-        let result =
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| base.powd(exponent))) {
-                Ok(result) => result,
-                Err(_) => {
-                    return Err(VmError::ArithmeticError {
-                        message: format!("Power operation failed: {} ^ {}", base, exponent),
-                    });
-                }
-            };
-
-        stack.push(result);
+    #[cfg(feature = "f64-floats")]
+    fn div_op(&mut self) -> Result<(), VmError> {
+        let right = self.pop()?;
+        let left = self.pop()?;
+        // Check for division by zero to prevent undefined behavior
+        if right == 0.0 {
+            return Err(VmError::DivisionByZero);
+        }
+        self.stack.push(left / right);
         Ok(())
     }
 
-    fn fact_op(&self, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        let n = Self::pop(stack)?;
+    #[cfg(feature = "decimal-precision")]
+    fn pow_op(&mut self) -> Result<(), VmError> {
+        use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+
+        let exponent = self.pop()?;
+        let base = self.pop()?;
+
+        // Convert to f64, compute power, convert back
+        // This is a limitation of rust_decimal which doesn't have decimal exponent support
+        let base_f64 = base.to_f64().ok_or_else(|| VmError::ArithmeticError {
+            message: format!("Failed to convert base {} to f64", base),
+        })?;
+        let exp_f64 = exponent.to_f64().ok_or_else(|| VmError::ArithmeticError {
+            message: format!("Failed to convert exponent {} to f64", exponent),
+        })?;
+
+        let result_f64 = base_f64.powf(exp_f64);
+
+        let result = Number::from_f64(result_f64).ok_or_else(|| VmError::ArithmeticError {
+            message: format!(
+                "Power operation result cannot be represented: {} ^ {}",
+                base, exponent
+            ),
+        })?;
+
+        self.stack.push(result);
+        Ok(())
+    }
+
+    #[cfg(feature = "f64-floats")]
+    fn pow_op(&mut self) -> Result<(), VmError> {
+        let exponent = self.pop()?;
+        let base = self.pop()?;
+        self.stack.push(base.powf(exponent));
+        Ok(())
+    }
+
+    #[cfg(feature = "decimal-precision")]
+    fn fact_op(&mut self) -> Result<(), VmError> {
+        use crate::number::consts;
+        use rust_decimal::prelude::*;
+
+        let n = self.pop()?;
 
         // Check for negative numbers
         if n.is_sign_negative() {
@@ -220,155 +306,104 @@ impl Vm {
         }
 
         // Check for non-integer
-        if n.fract() != Decimal::ZERO {
+        if n.fract() != consts::ZERO {
             return Err(VmError::InvalidFactorial { value: n });
         }
 
         // Calculate factorial using safe multiplication with iterator
         let n_u64 = n.to_u64().unwrap();
-        let result = (1..=n_u64).try_fold(Decimal::ONE, |acc, i| {
-            acc.checked_mul(Decimal::from(i))
+        let result = (1..=n_u64).try_fold(consts::ONE, |acc, i| {
+            acc.checked_mul(Number::from(i))
                 .ok_or_else(|| VmError::ArithmeticError {
                     message: format!("Factorial calculation overflow at {}!", i),
                 })
         })?;
 
-        stack.push(result);
+        self.stack.push(result);
         Ok(())
     }
 
-    fn call_op(&self, sym: &Symbol, argc: usize, stack: &mut Vec<Decimal>) -> Result<(), VmError> {
-        match sym {
-            Symbol::Func {
-                name,
-                args: min_args,
-                variadic,
-                callback,
-                ..
-            } => {
-                if argc != *min_args && (!*variadic || argc < *min_args) {
-                    return Err(VmError::CallStackUnderflow {
-                        function_name: name.to_string(),
-                        expected: *min_args,
-                        found: argc,
-                    });
-                }
+    #[cfg(feature = "f64-floats")]
+    fn fact_op(&mut self) -> Result<(), VmError> {
+        let n = self.pop()?;
 
-                // Check if we have enough values on the stack
-                if stack.len() < argc {
-                    return Err(VmError::CallStackUnderflow {
-                        function_name: name.to_string(),
-                        expected: argc,
-                        found: stack.len(),
-                    });
-                }
+        // Check for negative numbers
+        if n < 0.0 {
+            return Err(VmError::InvalidFactorial { value: n });
+        }
 
-                let args_start = stack.len() - argc;
-                let args = &stack[args_start..];
+        // Check for non-integer
+        if n.fract() != 0.0 {
+            return Err(VmError::InvalidFactorial { value: n });
+        }
+
+        // Calculate factorial
+        let n_u64 = n as u64;
+        let mut result = 1.0;
+        for i in 1..=n_u64 {
+            result *= i as f64;
+        }
+
+        self.stack.push(result);
+        Ok(())
+    }
+
+    fn call_op(&mut self, idx: usize, argc: usize) -> Result<(), VmError> {
+        match self.symtable.get_by_index(idx).unwrap() {
+            Symbol::Func { callback, .. } => {
+                let args_start = self.stack.len() - argc;
+                let args = &self.stack[args_start..];
                 let result = callback(args).map_err(VmError::FunctionError)?;
-                stack.truncate(args_start);
-                stack.push(result);
+                self.stack.truncate(args_start);
+                self.stack.push(result);
                 Ok(())
             }
-            Symbol::Const { .. } => Err(VmError::InvalidCall {
-                symbol_name: sym.name().to_string(),
-            }),
+            Symbol::Const { .. } => unreachable!(),
         }
     }
 
-    fn pop(stack: &mut Vec<Decimal>) -> Result<Decimal, VmError> {
-        stack.pop().ok_or(VmError::StackUnderflow)
+    fn pop(&mut self) -> Result<Number, VmError> {
+        self.stack.pop().ok_or(VmError::StackUnderflow)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::symbol::SymTable;
+    use crate::num;
+    use crate::symtable::SymTable;
 
     #[test]
     fn test_vm_error_stack_underflow() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
         let bytecode = vec![Instr::Add]; // No values on stack
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(result, Err(VmError::StackUnderflow)));
     }
 
     #[test]
     fn test_vm_error_division_by_zero() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
-        let bytecode = vec![Instr::Push(dec!(5)), Instr::Push(dec!(0)), Instr::Div];
+        let mut table = SymTable::stdlib();
+        let bytecode = vec![Instr::Push(num!(5)), Instr::Push(num!(0)), Instr::Div];
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
     }
 
     #[test]
     fn test_vm_error_invalid_final_stack() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
         let bytecode = vec![
-            Instr::Push(dec!(1)),
-            Instr::Push(dec!(2)),
+            Instr::Push(num!(1)),
+            Instr::Push(num!(2)),
             // No operation to combine them
         ];
 
-        let result = vm.run_bytecode(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(
             result,
             Err(VmError::InvalidFinalStack { count: 2 })
-        ));
-    }
-
-    #[test]
-    fn test_vm_error_invalid_load() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
-        let (sin_idx, _) = table.get_with_index("sin").unwrap();
-
-        let bytecode = vec![Instr::Load(sin_idx)]; // Trying to load a function as constant
-
-        let result = vm.run_bytecode(&bytecode, &table);
-        assert!(matches!(
-            result,
-            Err(VmError::InvalidLoad { symbol_name: _ })
-        ));
-    }
-
-    #[test]
-    fn test_vm_error_invalid_call() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
-        let (pi_idx, _) = table.get_with_index("pi").unwrap();
-
-        let bytecode = vec![Instr::Call(pi_idx, 0)]; // Trying to call a constant as function
-
-        let result = vm.run_bytecode(&bytecode, &table);
-        assert!(matches!(
-            result,
-            Err(VmError::InvalidCall { symbol_name: _ })
-        ));
-    }
-
-    #[test]
-    fn test_vm_error_call_stack_underflow() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
-        let (sin_idx, _) = table.get_with_index("sin").unwrap();
-
-        let bytecode = vec![Instr::Call(sin_idx, 0)]; // No arguments for sin function
-
-        let result = vm.run_bytecode(&bytecode, &table);
-        assert!(matches!(
-            result,
-            Err(VmError::CallStackUnderflow {
-                function_name: _,
-                expected: _,
-                found: _
-            })
         ));
     }
 
@@ -383,54 +418,31 @@ mod tests {
             VmError::InvalidFinalStack { count: 3 }.to_string(),
             "Invalid stack state at program end: expected 1 element, found 3"
         );
-        assert_eq!(
-            VmError::InvalidLoad {
-                symbol_name: "test".to_string(),
-            }
-            .to_string(),
-            "Invalid load operation: cannot load 'test' as a constant"
-        );
-        assert_eq!(
-            VmError::InvalidCall {
-                symbol_name: "test".to_string(),
-            }
-            .to_string(),
-            "Invalid call operation: cannot call 'test' as a function"
-        );
-        assert_eq!(
-            VmError::CallStackUnderflow {
-                function_name: "sin".to_string(),
-                expected: 1,
-                found: 0
-            }
-            .to_string(),
-            "Stack underflow on function call 'sin': expected 1 arguments, found 0"
-        );
     }
 
     #[test]
     fn test_binary_operations() {
-        let vm = Vm;
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
 
         // Test all binary operations
         let test_cases = vec![
             (
-                vec![Instr::Push(dec!(6)), Instr::Push(dec!(2)), Instr::Sub],
-                dec!(4),
+                vec![Instr::Push(num!(6)), Instr::Push(num!(2)), Instr::Sub],
+                num!(4),
             ),
             (
-                vec![Instr::Push(dec!(3)), Instr::Push(dec!(4)), Instr::Mul],
-                dec!(12),
+                vec![Instr::Push(num!(3)), Instr::Push(num!(4)), Instr::Mul],
+                num!(12),
             ),
             (
-                vec![Instr::Push(dec!(8)), Instr::Push(dec!(2)), Instr::Div],
-                dec!(4),
+                vec![Instr::Push(num!(8)), Instr::Push(num!(2)), Instr::Div],
+                num!(4),
             ),
         ];
 
         for (code, expected) in test_cases {
-            assert_eq!(vm.run_bytecode(&code, &table).unwrap(), expected);
+            let result = Vm::run(&code, &mut table).unwrap();
+            assert_eq!(result, expected);
         }
     }
 }

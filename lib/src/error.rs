@@ -1,5 +1,6 @@
 //! Error types for parsing, linking, and program operations.
 
+use crate::SymbolError;
 use crate::span::Span;
 use crate::span::SpanError;
 use thiserror::Error;
@@ -25,21 +26,25 @@ impl SpanError for ParseError {
     }
 }
 
-/// Errors that can occur during linking.
+/// Errors that can occur during IR (bytecode) generation.
 #[derive(Error, Debug)]
-pub enum LinkError {
-    #[error("Missing symbol: '{name}' is required by bytecode but not in symbol table")]
-    MissingSymbol { name: String },
+pub enum IrError {
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
+}
 
-    #[error("Type mismatch for symbol '{name}': expected {expected}, found {found}")]
+/// Errors that can occur during the linking process.
+#[derive(Error, Debug)]
+pub enum LinkerError {
+    #[error("Link error: Type mismatch for symbol '{name}': expected {expected}, found {found}")]
     TypeMismatch {
         name: String,
         expected: String,
         found: String,
     },
 
-    #[error("Symbol table error: {0}")]
-    SymbolTableError(#[from] crate::symbol::SymbolError),
+    #[error("{0}")]
+    SymbolError(#[from] SymbolError),
 }
 
 /// Errors that can occur during program operations.
@@ -48,21 +53,31 @@ pub enum ProgramError {
     #[error("{0}")]
     ParseError(String),
 
-    #[error("Link error: {0}")]
-    LinkError(#[from] LinkError),
+    #[error("{0}")]
+    IrError(#[from] IrError),
 
+    #[error("{0}")]
+    LinkerError(#[from] LinkerError),
+
+    #[error("{0}")]
+    VmError(#[from] crate::vm::VmError),
+
+    #[error("{0}")]
+    SymError(#[from] SymbolError),
+
+    #[cfg(feature = "serialization")]
     #[error("Serialization error: {0}")]
     SerializationError(#[from] bincode::error::EncodeError),
 
+    #[cfg(feature = "serialization")]
     #[error("Deserialization error: {0}")]
     DeserializationError(#[from] bincode::error::DecodeError),
 
+    #[cfg(feature = "serialization")]
     #[error("Incompatible program version: expected {expected}, got {found}")]
     IncompatibleVersion { expected: String, found: String },
 
-    #[error("Invalid symbol index: {0}")]
-    InvalidSymbolIndex(usize),
-
+    #[cfg(feature = "serialization")]
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }

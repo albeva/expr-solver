@@ -1,11 +1,10 @@
 //! Lexer for tokenizing mathematical expressions.
 
+use crate::number::{Number, ParseNumber};
 use crate::span::Span;
 use crate::token::Token;
-use rust_decimal::Decimal;
 use std::iter::Peekable;
 use std::str::Chars;
-use std::str::FromStr;
 
 /// A hand-written lexer for the mini expression language.
 pub struct Lexer<'src> {
@@ -96,7 +95,7 @@ impl<'src> Lexer<'src> {
         }
 
         let s = &self.input[self.start..self.pos];
-        match Decimal::from_str(s) {
+        match Number::parse_number(s) {
             Ok(n) => Token::Number(n),
             Err(_) => Token::Invalid(s),
         }
@@ -112,7 +111,16 @@ impl<'src> Lexer<'src> {
             }
         }
         let s = &self.input[self.start..self.pos];
-        Token::Ident(s)
+        // Check for keywords (case-insensitive)
+        if s.eq_ignore_ascii_case("if") {
+            Token::If
+        } else if s.eq_ignore_ascii_case("let") {
+            Token::Let
+        } else if s.eq_ignore_ascii_case("then") {
+            Token::Then
+        } else {
+            Token::Ident(s)
+        }
     }
 
     fn peek(&mut self) -> Option<char> {
@@ -161,7 +169,7 @@ impl<'src> Lexer<'src> {
             self.read(); // consume second '='
             Token::Equal
         } else {
-            self.invalid() // single '=' is not valid
+            Token::Assign // single '=' is assignment
         }
     }
 

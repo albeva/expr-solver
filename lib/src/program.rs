@@ -1,15 +1,26 @@
 //! Type-state program implementation for compile-link-execute workflow.
+//!
+//! This module provides the [`Program`] type which orchestrates the compilation pipeline:
+//!
+//! 1. **Parsing** - Source code is parsed into an AST using [`Parser`]
+//! 2. **IR Generation** - AST is compiled to bytecode using [`IrBuilder`]
+//! 3. **Linking** - Bytecode is linked with a symbol table using [`Linker`]
+//! 4. **Execution** - Linked bytecode is executed on the VM
+//!
+//! The type-state pattern ensures these stages occur in the correct order at compile time.
 
-use super::ast::{BinOp, Expr, ExprKind, UnOp};
-use super::error::{LinkError, ParseError, ProgramError};
-use super::metadata::{SymbolKind, SymbolMetadata};
+use super::error::{ParseError, ProgramError};
+use super::ir_builder::IrBuilder;
+use super::linker::Linker;
+use super::metadata::SymbolMetadata;
 use super::parser::Parser;
 use crate::ir::Instr;
-use crate::span::{Span, SpanError};
-use crate::symbol::{SymTable, Symbol};
+use crate::number::Number;
+use crate::span::SpanError;
+use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
-use rust_decimal::Decimal;
+#[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
 
@@ -17,6 +28,7 @@ use unicode_width::UnicodeWidthStr;
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Binary format for serialization
+#[cfg(feature = "serialization")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct BinaryFormat {
     version: String,
@@ -28,10 +40,12 @@ struct BinaryFormat {
 #[derive(Debug, Clone)]
 pub enum ProgramOrigin {
     /// Loaded from a file (path stored)
+    #[cfg(feature = "serialization")]
     File(String),
     /// Compiled from source string
     Source,
     /// Deserialized from bytecode bytes
+    #[cfg(feature = "serialization")]
     Bytecode,
 }
 
@@ -40,19 +54,18 @@ pub enum ProgramOrigin {
 /// # Examples
 ///
 /// ```
-/// use expr_solver::{Program, SymTable};
-/// use rust_decimal_macros::dec;
+/// use expr_solver::{num, Program, SymTable};
 ///
 /// // Compile from source
 /// let program = Program::new_from_source("x * 2 + 1").unwrap();
 ///
 /// // Link with symbol table
 /// let mut table = SymTable::new();
-/// table.add_const("x", dec!(5)).unwrap();
-/// let linked = program.link(table).unwrap();
+/// table.add_const("x", num!(5), false).unwrap();
+/// let mut linked = program.link(table).unwrap();
 ///
 /// // Execute
-/// assert_eq!(linked.execute().unwrap(), dec!(11));
+/// assert_eq!(linked.execute().unwrap(), num!(11));
 /// ```
 #[derive(Debug)]
 pub struct Program<'src, State> {
@@ -102,23 +115,19 @@ impl<'src> Program<'src, Compiled> {
 
         // Parse
         let mut parser = Parser::new(trimmed);
-        let ast = parser
-            .parse()
-            .map_err(|parse_err| {
-                // Format error with source highlighting
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
-            })?
-            .ok_or_else(|| {
-                let parse_err = ParseError::UnexpectedEof {
-                    span: Span::new(0, 0),
-                };
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
-            })?;
+        let ast_opt = parser.parse().map_err(|parse_err| {
+            // Format error with source highlighting
+            let highlighted = Self::highlight_error(trimmed, &parse_err);
+            ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
+        })?;
 
-        // Compile
-        let (bytecode, symbols) = Self::generate_bytecode(&ast);
+        // Compile (handle empty input by creating empty bytecode)
+        let (bytecode, symbols) = if let Some(ast) = ast_opt {
+            IrBuilder::new().build(&ast)?
+        } else {
+            // Empty input -> empty program (VM will return 0)
+            (Vec::new(), Vec::new())
+        };
 
         Ok(Program {
             source: Some(trimmed),
@@ -140,6 +149,7 @@ impl<'src> Program<'src, Compiled> {
     ///
     /// let program = Program::new_from_file("expr.bin").unwrap();
     /// ```
+    #[cfg(feature = "serialization")]
     pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
         let path_str = path.into();
         let data = std::fs::read(&path_str)?;
@@ -149,6 +159,7 @@ impl<'src> Program<'src, Compiled> {
     /// Creates a compiled program from bytecode bytes.
     ///
     /// Deserializes the bytecode and validates the version.
+    #[cfg(feature = "serialization")]
     pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
         Self::from_bytecode(data, ProgramOrigin::Bytecode)
     }
@@ -165,59 +176,19 @@ impl<'src> Program<'src, Compiled> {
     /// let program = Program::new_from_source("sin(pi)").unwrap();
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// ```
-    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
-        // Validate symbols and fill in their resolved indices
-        for metadata in &mut self.state.symbols {
-            let (resolved_idx, symbol) =
-                table
-                    .get_with_index(&metadata.name)
-                    .ok_or_else(|| LinkError::MissingSymbol {
-                        name: metadata.name.to_string(),
-                    })?;
-
-            // Validate kind matches
-            Self::validate_symbol_kind(metadata, symbol)?;
-
-            // Store resolved index in metadata
-            metadata.index = Some(resolved_idx);
-        }
-
-        // Rewrite all indices in bytecode using resolved indices from metadata
-        for instr in &mut self.state.bytecode {
-            match instr {
-                Instr::Load(idx) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                Instr::Call(idx, _) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                _ => {}
-            }
-        }
+    pub fn link(self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+        let linker = Linker::new(self.state.bytecode, self.state.symbols, table);
+        let (bytecode, symtable) = linker.link()?;
 
         Ok(Program {
             source: self.source,
             state: Linked {
                 origin: self.state.origin,
                 version: self.state.version,
-                bytecode: self.state.bytecode,
-                symtable: table,
+                bytecode,
+                symtable,
             },
         })
-    }
-
-    /// Returns the symbol metadata required by this program.
-    pub fn symbols(&self) -> &[SymbolMetadata] {
-        &self.state.symbols
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
     }
 
     // ========================================================================
@@ -225,6 +196,7 @@ impl<'src> Program<'src, Compiled> {
     // ========================================================================
 
     /// Internal helper to create program from bytecode with a specific origin.
+    #[cfg(feature = "serialization")]
     fn from_bytecode(data: &[u8], origin: ProgramOrigin) -> Result<Self, ProgramError> {
         let config = bincode::config::standard();
         let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
@@ -281,139 +253,6 @@ impl<'src> Program<'src, Compiled> {
         }
         out
     }
-
-    /// Generates bytecode and collects symbol metadata in a single AST traversal.
-    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
-        let mut bytecode = Vec::new();
-        let mut symbols = Vec::new();
-        Self::emit_instr(ast, &mut bytecode, &mut symbols);
-        (bytecode, symbols)
-    }
-
-    /// Emits bytecode instructions for an expression node.
-    fn emit_instr(expr: &Expr, bytecode: &mut Vec<Instr>, symbols: &mut Vec<SymbolMetadata>) {
-        match &expr.kind {
-            ExprKind::Literal(v) => {
-                bytecode.push(Instr::Push(*v));
-            }
-            ExprKind::Ident { name } => {
-                // Get or create index for this constant
-                let idx = Self::get_or_create_symbol(name, SymbolKind::Const, symbols);
-                bytecode.push(Instr::Load(idx));
-            }
-            ExprKind::Unary { op, expr } => {
-                Self::emit_instr(expr, bytecode, symbols);
-                match op {
-                    UnOp::Neg => bytecode.push(Instr::Neg),
-                    UnOp::Fact => bytecode.push(Instr::Fact),
-                }
-            }
-            ExprKind::Binary { op, left, right } => {
-                Self::emit_instr(left, bytecode, symbols);
-                Self::emit_instr(right, bytecode, symbols);
-                bytecode.push(match op {
-                    BinOp::Add => Instr::Add,
-                    BinOp::Sub => Instr::Sub,
-                    BinOp::Mul => Instr::Mul,
-                    BinOp::Div => Instr::Div,
-                    BinOp::Pow => Instr::Pow,
-                    BinOp::Equal => Instr::Equal,
-                    BinOp::NotEqual => Instr::NotEqual,
-                    BinOp::Less => Instr::Less,
-                    BinOp::LessEqual => Instr::LessEqual,
-                    BinOp::Greater => Instr::Greater,
-                    BinOp::GreaterEqual => Instr::GreaterEqual,
-                });
-            }
-            ExprKind::Call { name, args } => {
-                // Emit arguments first
-                for arg in args {
-                    Self::emit_instr(arg, bytecode, symbols);
-                }
-
-                // Get or create index for this function
-                let idx = Self::get_or_create_symbol(
-                    name,
-                    SymbolKind::Func {
-                        arity: args.len(),
-                        variadic: false, // Will be validated during linking
-                    },
-                    symbols,
-                );
-                bytecode.push(Instr::Call(idx, args.len()));
-            }
-        }
-    }
-
-    /// Gets existing symbol index or creates a new one.
-    /// For ~50 symbols, linear search is faster than HashMap overhead.
-    fn get_or_create_symbol(
-        name: &str,
-        kind: SymbolKind,
-        symbols: &mut Vec<SymbolMetadata>,
-    ) -> usize {
-        // Check if symbol already exists
-        if let Some(pos) = symbols.iter().position(|s| s.name == name) {
-            return pos;
-        }
-
-        // Create new symbol entry
-        symbols.push(SymbolMetadata {
-            name: name.to_string().into(),
-            kind,
-            index: None,
-        });
-        symbols.len() - 1
-    }
-
-    /// Validates that a symbol matches the expected kind.
-    fn validate_symbol_kind(metadata: &SymbolMetadata, symbol: &Symbol) -> Result<(), LinkError> {
-        match (&metadata.kind, symbol) {
-            (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
-            (
-                SymbolKind::Func { arity, .. },
-                Symbol::Func {
-                    args: min_args,
-                    variadic,
-                    ..
-                },
-            ) => {
-                // Check if the call is valid:
-                // - For non-variadic: arity must match exactly
-                // - For variadic: arity must be >= min_args
-                let valid = if *variadic {
-                    arity >= min_args
-                } else {
-                    arity == min_args
-                };
-
-                if valid {
-                    Ok(())
-                } else {
-                    let expected_msg = if *variadic {
-                        format!("at least {} arguments", min_args)
-                    } else {
-                        format!("exactly {} arguments", min_args)
-                    };
-                    Err(LinkError::TypeMismatch {
-                        name: metadata.name.to_string(),
-                        expected: expected_msg,
-                        found: format!("{} arguments provided", arity),
-                    })
-                }
-            }
-            (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.to_string(),
-                expected: "constant".to_string(),
-                found: "function".to_string(),
-            }),
-            (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkError::TypeMismatch {
-                name: metadata.name.to_string(),
-                expected: "function".to_string(),
-                found: "constant".to_string(),
-            }),
-        }
-    }
 }
 
 // ============================================================================
@@ -426,13 +265,8 @@ impl<'src> Program<'src, Linked> {
     // ========================================================================
 
     /// Executes the program and returns the result.
-    pub fn execute(&self) -> Result<Decimal, VmError> {
-        Vm.run_bytecode(&self.state.bytecode, &self.state.symtable)
-    }
-
-    /// Returns a reference to the symbol table.
-    pub fn symtable(&self) -> &SymTable {
-        &self.state.symtable
+    pub fn execute(&mut self) -> Result<Number, VmError> {
+        Vm::run(&self.state.bytecode, &mut self.state.symtable)
     }
 
     /// Returns a mutable reference to the symbol table.
@@ -440,23 +274,80 @@ impl<'src> Program<'src, Linked> {
         &mut self.state.symtable
     }
 
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
-    }
-
     /// Returns a human-readable assembly representation of the program.
     pub fn get_assembly(&self) -> String {
-        Self::format_assembly(
-            &self.state.version,
-            &self.state.bytecode,
-            &self.state.symtable,
-        )
+        use std::fmt::Write as _;
+
+        let mut out = String::new();
+        out += &format!("; VERSION {}\n", self.state.version)
+            .bright_black()
+            .to_string();
+
+        for (i, instr) in self.state.bytecode.iter().enumerate() {
+            let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
+            let line = match instr {
+                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
+                Instr::Load(idx) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .expect("Symbol not found in assembly");
+                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
+                }
+                Instr::Store(idx) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .expect("Symbol not found in assembly");
+                    format!("{} {}", "STORE".magenta(), sym_name.blue())
+                }
+                Instr::Neg => format!("{}", "NEG".magenta()),
+                Instr::Add => format!("{}", "ADD".magenta()),
+                Instr::Sub => format!("{}", "SUB".magenta()),
+                Instr::Mul => format!("{}", "MUL".magenta()),
+                Instr::Div => format!("{}", "DIV".magenta()),
+                Instr::Pow => format!("{}", "POW".magenta()),
+                Instr::Fact => format!("{}", "FACT".magenta()),
+                Instr::Call(idx, argc) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .expect("Symbol not found in assembly");
+                    format!(
+                        "{} {} args: {}",
+                        "CALL".magenta(),
+                        sym_name.cyan(),
+                        argc.to_string().bright_blue()
+                    )
+                }
+                Instr::Equal => format!("{}", "EQ".magenta()),
+                Instr::NotEqual => format!("{}", "NEQ".magenta()),
+                Instr::Less => format!("{}", "LT".magenta()),
+                Instr::LessEqual => format!("{}", "LTE".magenta()),
+                Instr::Greater => format!("{}", "GT".magenta()),
+                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
+                Instr::Jmp(target) => {
+                    format!("{} {}", "JMP".magenta(), format!("{:04X}", target).yellow())
+                }
+                Instr::Jz(target) => {
+                    format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
+                }
+            };
+            let _ = writeln!(out, "{}", line);
+        }
+        out
     }
 
     /// Converts the program to bytecode bytes.
     ///
     /// This involves reverse-mapping the bytecode indices back to metadata indices.
+    #[cfg(feature = "serialization")]
     pub fn to_bytecode(&self) -> Result<Vec<u8>, ProgramError> {
         use std::collections::HashMap;
 
@@ -489,6 +380,7 @@ impl<'src> Program<'src, Linked> {
             .iter()
             .map(|instr| match instr {
                 Instr::Load(idx) => Instr::Load(get_or_create_metadata(*idx)),
+                Instr::Store(idx) => Instr::Store(get_or_create_metadata(*idx)),
                 Instr::Call(idx, argc) => Instr::Call(get_or_create_metadata(*idx), *argc),
                 other => other.clone(),
             })
@@ -506,6 +398,7 @@ impl<'src> Program<'src, Linked> {
     }
 
     /// Saves the program bytecode to a file.
+    #[cfg(feature = "serialization")]
     pub fn save_bytecode_to_file(
         &self,
         path: impl AsRef<std::path::Path>,
@@ -513,54 +406,5 @@ impl<'src> Program<'src, Linked> {
         let bytecode = self.to_bytecode()?;
         std::fs::write(path, bytecode)?;
         Ok(())
-    }
-
-    // ========================================================================
-    // Private helpers
-    // ========================================================================
-
-    /// Formats bytecode as human-readable assembly.
-    fn format_assembly(version: &str, bytecode: &[Instr], table: &SymTable) -> String {
-        use std::fmt::Write as _;
-
-        let mut out = String::new();
-        out += &format!("; VERSION {}\n", version)
-            .bright_black()
-            .to_string();
-
-        for (i, instr) in bytecode.iter().enumerate() {
-            let _ = write!(out, "{} ", format!("{:04X}", i).yellow());
-            let line = match instr {
-                Instr::Push(v) => format!("{} {}", "PUSH".magenta(), v.to_string().green()),
-                Instr::Load(idx) => {
-                    let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
-                    format!("{} {}", "LOAD".magenta(), sym_name.blue())
-                }
-                Instr::Neg => format!("{}", "NEG".magenta()),
-                Instr::Add => format!("{}", "ADD".magenta()),
-                Instr::Sub => format!("{}", "SUB".magenta()),
-                Instr::Mul => format!("{}", "MUL".magenta()),
-                Instr::Div => format!("{}", "DIV".magenta()),
-                Instr::Pow => format!("{}", "POW".magenta()),
-                Instr::Fact => format!("{}", "FACT".magenta()),
-                Instr::Call(idx, argc) => {
-                    let sym_name = table.get_by_index(*idx).map(|s| s.name()).unwrap_or("???");
-                    format!(
-                        "{} {} args: {}",
-                        "CALL".magenta(),
-                        sym_name.cyan(),
-                        argc.to_string().bright_blue()
-                    )
-                }
-                Instr::Equal => format!("{}", "EQ".magenta()),
-                Instr::NotEqual => format!("{}", "NEQ".magenta()),
-                Instr::Less => format!("{}", "LT".magenta()),
-                Instr::LessEqual => format!("{}", "LTE".magenta()),
-                Instr::Greater => format!("{}", "GT".magenta()),
-                Instr::GreaterEqual => format!("{}", "GTE".magenta()),
-            };
-            let _ = writeln!(out, "{}", line);
-        }
-        out
     }
 }

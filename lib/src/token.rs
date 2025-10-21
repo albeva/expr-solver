@@ -1,11 +1,14 @@
+use crate::number::Number;
 use Cow::{Borrowed, Owned};
-use rust_decimal::Decimal;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
-    Number(Decimal),
+    Number(Number),
     Ident(&'src str),
+    If,
+    Let,
+    Then,
     Plus,
     Minus,
     Negate,
@@ -16,6 +19,7 @@ pub enum Token<'src> {
     ParenOpen,
     ParenClose,
     Comma,
+    Assign, // =
     // Comparison operators
     Equal,        // ==
     NotEqual,     // !=
@@ -55,8 +59,11 @@ impl<'src> Token<'src> {
 
     pub fn lexeme(&self) -> Cow<'src, str> {
         match self {
-            Token::Number(decimal) => Owned(decimal.to_string()),
+            Token::Number(number) => Owned(number.to_string()),
             Token::Ident(str) => Borrowed(str),
+            Token::If => Borrowed("if"),
+            Token::Let => Borrowed("let"),
+            Token::Then => Borrowed("then"),
             Token::Plus => Borrowed("+"),
             Token::Minus => Borrowed("-"),
             Token::Negate => Borrowed("-"),
@@ -67,6 +74,7 @@ impl<'src> Token<'src> {
             Token::ParenOpen => Borrowed("("),
             Token::ParenClose => Borrowed(")"),
             Token::Comma => Borrowed(","),
+            Token::Assign => Borrowed("="),
             Token::Equal => Borrowed("=="),
             Token::NotEqual => Borrowed("!="),
             Token::Less => Borrowed("<"),
