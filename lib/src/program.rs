@@ -253,7 +253,6 @@ impl<'src> Program<'src, Compiled> {
         }
         out
     }
-
 }
 
 // ============================================================================
@@ -381,6 +380,7 @@ impl<'src> Program<'src, Linked> {
             .iter()
             .map(|instr| match instr {
                 Instr::Load(idx) => Instr::Load(get_or_create_metadata(*idx)),
+                Instr::Store(idx) => Instr::Store(get_or_create_metadata(*idx)),
                 Instr::Call(idx, argc) => Instr::Call(get_or_create_metadata(*idx), *argc),
                 other => other.clone(),
             })

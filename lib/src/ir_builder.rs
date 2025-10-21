@@ -26,6 +26,7 @@
 //! // symbols contains metadata about 'x' (local) and any other references
 //! ```
 
+use crate::SymbolError;
 use crate::ast::{Expr, ExprKind};
 use crate::error::IrError;
 use crate::ir::Instr;
@@ -71,7 +72,7 @@ impl IrBuilder {
         for (name, value_expr) in decls {
             // Check for duplicate declarations
             if self.symbols.iter().any(|meta| meta.name == *name) {
-                return Err(crate::SymbolError::DuplicateSymbol(name.to_string()).into());
+                return Err(SymbolError::DuplicateSymbol(name.to_string()).into());
             }
 
             // Emit bytecode for the value expression
@@ -111,21 +112,13 @@ impl IrBuilder {
                 self.emit_expr(right);
                 self.bytecode.push((*op).into());
             }
-            ExprKind::Call { name, args } => {
-                self.emit_call(name, args);
-            }
+            ExprKind::Call { name, args } => self.emit_call(name, args),
             ExprKind::If {
                 cond,
                 then_branch,
                 else_branch,
-            } => {
-                self.emit_if(cond, then_branch, else_branch);
-            }
-            ExprKind::Let { body, .. } => {
-                // Nested lets: only emit the body
-                // (declarations were processed at the top level)
-                self.emit_expr(body);
-            }
+            } => self.emit_if(cond, then_branch, else_branch),
+            ExprKind::Let { body, .. } => self.emit_expr(body),
         }
     }
 
