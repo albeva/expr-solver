@@ -20,21 +20,13 @@ use crate::span::SpanError;
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
-#[cfg(feature = "serialization")]
-use serde::{Deserialize, Serialize};
 use unicode_width::UnicodeWidthStr;
+
+#[cfg(feature = "serialization")]
+use crate::serialization::Serializer;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Binary format for serialization
-#[cfg(feature = "serialization")]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct BinaryFormat {
-    version: String,
-    bytecode: Vec<Instr>,
-    symbols: Vec<SymbolMetadata>,
-}
 
 /// Origin of a compiled program.
 #[derive(Debug, Clone)]
@@ -152,8 +144,18 @@ impl<'src> Program<'src, Compiled> {
     #[cfg(feature = "serialization")]
     pub fn new_from_file(path: impl Into<String>) -> Result<Self, ProgramError> {
         let path_str = path.into();
-        let data = std::fs::read(&path_str)?;
-        Self::from_bytecode(&data, ProgramOrigin::File(path_str))
+        let serializer = Serializer::from_file(&path_str)?;
+        let (version, bytecode, symbols) = serializer.into_parts();
+
+        Ok(Program {
+            source: None,
+            state: Compiled {
+                origin: ProgramOrigin::File(path_str),
+                version,
+                bytecode,
+                symbols,
+            },
+        })
     }
 
     /// Creates a compiled program from bytecode bytes.
@@ -161,7 +163,18 @@ impl<'src> Program<'src, Compiled> {
     /// Deserializes the bytecode and validates the version.
     #[cfg(feature = "serialization")]
     pub fn new_from_bytecode(data: &[u8]) -> Result<Self, ProgramError> {
-        Self::from_bytecode(data, ProgramOrigin::Bytecode)
+        let serializer = Serializer::from_bytes(data)?;
+        let (version, bytecode, symbols) = serializer.into_parts();
+
+        Ok(Program {
+            source: None,
+            state: Compiled {
+                origin: ProgramOrigin::Bytecode,
+                version,
+                bytecode,
+                symbols,
+            },
+        })
     }
 
     /// Links the bytecode with a symbol table.
@@ -242,31 +255,6 @@ impl<'src> Program<'src, Compiled> {
     // ========================================================================
     // Private helpers
     // ========================================================================
-
-    /// Internal helper to create program from bytecode with a specific origin.
-    #[cfg(feature = "serialization")]
-    fn from_bytecode(data: &[u8], origin: ProgramOrigin) -> Result<Self, ProgramError> {
-        let config = bincode::config::standard();
-        let (binary, _): (BinaryFormat, _) = bincode::serde::decode_from_slice(data, config)?;
-
-        // Validate version
-        if binary.version != PROGRAM_VERSION {
-            return Err(ProgramError::IncompatibleVersion {
-                expected: PROGRAM_VERSION.to_string(),
-                found: binary.version,
-            });
-        }
-
-        Ok(Program {
-            source: None, // No source for bytecode
-            state: Compiled {
-                origin,
-                version: binary.version,
-                bytecode: binary.bytecode,
-                symbols: binary.symbols,
-            },
-        })
-    }
 
     /// Highlights an error in the source code.
     fn highlight_error(input: &str, error: &ParseError) -> String {
@@ -359,65 +347,22 @@ impl<'src> Program<'src, Linked> {
 
     /// Converts the program to bytecode bytes.
     ///
-    /// This involves reverse-mapping the bytecode indices back to metadata indices.
+    /// Uses [`Serializer`] to serialize the program.
     #[cfg(feature = "serialization")]
     pub fn to_bytecode(&self) -> Result<Vec<u8>, ProgramError> {
-        use std::collections::HashMap;
-
-        let mut reverse_map = HashMap::new();
-        let mut symbols = Vec::new();
-
-        // Helper closure to get or create metadata index
-        // All indices are valid since we successfully linked
-        let mut get_or_create_metadata = |idx: usize| -> usize {
-            if let Some(&existing) = reverse_map.get(&idx) {
-                existing
-            } else {
-                let symbol = self
-                    .state
-                    .symtable
-                    .get_by_index(idx)
-                    .expect("symbol index must be valid after linking");
-
-                let new_idx = symbols.len();
-                symbols.push(symbol.into());
-                reverse_map.insert(idx, new_idx);
-                new_idx
-            }
-        };
-
-        // Single pass: build symbol mapping and rewrite bytecode
-        let bytecode: Vec<Instr> = self
-            .state
-            .bytecode
-            .iter()
-            .map(|instr| match instr {
-                Instr::Load(idx) => Instr::Load(get_or_create_metadata(*idx)),
-                Instr::Store(idx) => Instr::Store(get_or_create_metadata(*idx)),
-                Instr::Call(idx, argc) => Instr::Call(get_or_create_metadata(*idx), *argc),
-                other => other.clone(),
-            })
-            .collect();
-
-        // Serialize
-        let binary = BinaryFormat {
-            version: self.state.version.clone(),
-            bytecode,
-            symbols,
-        };
-
-        let config = bincode::config::standard();
-        Ok(bincode::serde::encode_to_vec(&binary, config)?)
+        let serializer = Serializer::from_program(self);
+        serializer.to_bytes()
     }
 
     /// Saves the program bytecode to a file.
+    ///
+    /// Uses [`Serializer`] to serialize the program.
     #[cfg(feature = "serialization")]
     pub fn save_bytecode_to_file(
         &self,
         path: impl AsRef<std::path::Path>,
     ) -> Result<(), ProgramError> {
-        let bytecode = self.to_bytecode()?;
-        std::fs::write(path, bytecode)?;
-        Ok(())
+        let serializer = Serializer::from_program(self);
+        serializer.to_file(path)
     }
 }

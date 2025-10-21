@@ -214,6 +214,8 @@ mod parser;
 #[cfg(feature = "printing")]
 mod print;
 mod program;
+#[cfg(feature = "serialization")]
+mod serialization;
 #[cfg(feature = "printing")]
 mod style;
 
@@ -226,6 +228,8 @@ pub use parser::Parser;
 #[cfg(feature = "printing")]
 pub use print::Print;
 pub use program::{Compiled, Linked, Program, ProgramOrigin};
+#[cfg(feature = "serialization")]
+pub use serialization::Serializer;
 #[cfg(feature = "printing")]
 pub use style::ExprStyle;
 pub use symbol::{Symbol, SymbolError};
