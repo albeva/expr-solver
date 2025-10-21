@@ -153,7 +153,9 @@ mod lexer;
 mod linker;
 mod metadata;
 mod parser;
+mod print;
 mod program;
+mod style;
 
 // Public API
 pub use ast::{BinOp, Expr, ExprKind, UnOp};
@@ -161,7 +163,9 @@ pub use error::{IrError, LinkerError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;
+pub use print::Print;
 pub use program::{Compiled, Linked, Program, ProgramOrigin};
+pub use style::ExprStyle;
 pub use symbol::{Symbol, SymbolError};
 pub use symtable::SymTable;
 pub use vm::{Vm, VmError};

@@ -31,8 +31,12 @@ struct Args {
     symbol_table: bool,
 
     /// Print the assembly code
-    #[arg(short = 'a', long, conflicts_with_all=["symbol_table", "output"])]
+    #[arg(short = 'a', long, conflicts_with_all=["symbol_table", "output", "print"])]
     assembly: bool,
+
+    /// Print syntax-highlighted expression
+    #[arg(short = 'p', long, conflicts_with_all=["symbol_table", "output", "assembly"])]
+    print: bool,
 }
 
 /// Parses a key=value pair for custom constant definitions.
@@ -73,6 +77,12 @@ fn run() -> Result<(), String> {
     } else {
         return Err("no input".to_string());
     };
+
+    // Handle --print (before linking)
+    if args.print {
+        println!("{}", program.get_string());
+        return Ok(());
+    }
 
     // Link the program with the symbol table
     let mut program = program.link(table).map_err(|err| err.to_string())?;
