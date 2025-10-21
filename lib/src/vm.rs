@@ -129,11 +129,7 @@ impl<'vm> Vm<'vm> {
                 Instr::Div => self.div_op()?,
                 Instr::Pow => self.pow_op()?,
                 Instr::Fact => self.fact_op()?,
-                Instr::Call(idx, argc) => {
-                    let sym = self.symtable.get_by_index(*idx).unwrap();
-                    let stack = self.stack.as_mut();
-                    Self::call_op(sym, *argc, stack)?;
-                }
+                Instr::Call(idx, argc) => self.call_op(*idx, *argc)?,
                 Instr::Equal => self.comparison_op(|a, b| a == b)?,
                 Instr::NotEqual => self.comparison_op(|a, b| a != b)?,
                 Instr::Less => self.comparison_op(|a, b| a < b)?,
@@ -352,14 +348,14 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    fn call_op(sym: &Symbol, argc: usize, stack: &mut Vec<Number>) -> Result<(), VmError> {
-        match sym {
+    fn call_op(&mut self, idx: usize, argc: usize) -> Result<(), VmError> {
+        match self.symtable.get_by_index(idx).unwrap() {
             Symbol::Func { callback, .. } => {
-                let args_start = stack.len() - argc;
-                let args = &stack[args_start..];
+                let args_start = self.stack.len() - argc;
+                let args = &self.stack[args_start..];
                 let result = callback(args).map_err(VmError::FunctionError)?;
-                stack.truncate(args_start);
-                stack.push(result);
+                self.stack.truncate(args_start);
+                self.stack.push(result);
                 Ok(())
             }
             Symbol::Const { .. } => unreachable!(),

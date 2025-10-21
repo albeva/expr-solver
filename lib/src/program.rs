@@ -181,12 +181,7 @@ impl<'src> Program<'src, Compiled> {
                 table.add_const(metadata.name.to_string(), num!(0), true)?;
                 idx
             } else {
-                let (idx, symbol) =
-                    table
-                        .get_with_index(&metadata.name)
-                        .ok_or_else(|| LinkError::MissingSymbol {
-                            name: metadata.name.to_string(),
-                        })?;
+                let (idx, symbol) = table.get_with_index(&metadata.name)?;
                 // Validate kind matches
                 Self::validate_symbol_kind(metadata, symbol)?;
                 idx

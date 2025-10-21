@@ -39,6 +39,10 @@ pub enum SymbolError {
     /// A symbol with this name already exists in the table.
     #[error("Duplicate symbol definition: '{0}'")]
     DuplicateSymbol(String),
+
+    /// Fired when no symbol with given name exists
+    #[error("Symbol '{0}' not found")]
+    SymbolNotFound(String),
 }
 
 /// A symbol representing either a constant or function.

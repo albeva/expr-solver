@@ -49,7 +49,7 @@ impl SymTable {
         local: bool,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
-        if self.get(&name).is_some() {
+        if self.get_by_name(&name).is_ok() {
             return Err(SymbolError::DuplicateSymbol(name.to_string()));
         }
         self.symbols.push(Symbol::Const {
@@ -80,7 +80,7 @@ impl SymTable {
         local: bool,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
-        if self.get(&name).is_some() {
+        if self.get_by_name(&name).is_ok() {
             return Err(SymbolError::DuplicateSymbol(name.to_string()));
         }
         self.symbols.push(Symbol::Func {
@@ -95,28 +95,30 @@ impl SymTable {
     }
 
     /// Looks up a symbol by name (case-insensitive).
-    pub fn get(&self, name: &str) -> Option<&Symbol> {
+    pub fn get_by_name(&self, name: &str) -> Result<&Symbol, SymbolError> {
         self.symbols
             .iter()
             .find(|sym| sym.name().eq_ignore_ascii_case(name))
+            .ok_or_else(|| SymbolError::SymbolNotFound(name.to_string()))
     }
 
     /// Looks up a symbol by name and returns its index and reference (case-insensitive).
-    pub fn get_with_index(&self, name: &str) -> Option<(usize, &Symbol)> {
+    pub fn get_with_index(&self, name: &str) -> Result<(usize, &Symbol), SymbolError> {
         self.symbols
             .iter()
             .enumerate()
             .find(|(_, sym)| sym.name().eq_ignore_ascii_case(name))
+            .ok_or_else(|| SymbolError::SymbolNotFound(name.to_string()))
     }
 
     /// Returns a symbol by index.
-    pub fn get_by_index(&self, index: usize) -> Option<&Symbol> {
-        self.symbols.get(index)
+    pub fn get_by_index(&self, index: usize) -> Result<&Symbol, SymbolError> {
+        self.symbols.get(index).ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
     }
 
     /// Returns a symbol by index.
-    pub fn get_mut_by_index(&mut self, index: usize) -> Option<&mut Symbol> {
-        self.symbols.get_mut(index)
+    pub fn get_mut_by_index(&mut self, index: usize) -> Result<&mut Symbol, SymbolError> {
+        self.symbols.get_mut(index).ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
     }
 
     /// Returns an iterator over all symbols in the table.
