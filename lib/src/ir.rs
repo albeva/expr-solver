@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum Instr {
     Push(Number),
-    Load(usize), // Index into SymTable
-    Store(usize),
+    Load(usize),  // Index into SymTable
+    Store(usize), // Index into SymTable
     Neg,
     Add,
     Sub,
@@ -20,7 +20,6 @@ pub enum Instr {
     Pow,
     Fact,
     Call(usize, usize), // Index into SymTable and argument count
-    // Comparison operators
     Equal,
     NotEqual,
     Less,

@@ -209,16 +209,14 @@ impl<'src> Parser<'src> {
             Token::Ident(id) => {
                 self.advance();
                 Ok(id)
-            },
-            _ => {
-                Err(ParseError::UnexpectedToken {
-                    message: format!(
-                        "expected identifier in let declaration, found '{}'",
-                        self.lookahead.lexeme()
-                    ),
-                    span: self.span,
-                })
             }
+            _ => Err(ParseError::UnexpectedToken {
+                message: format!(
+                    "expected identifier in let declaration, found '{}'",
+                    self.lookahead.lexeme()
+                ),
+                span: self.span,
+            }),
         }
     }
 

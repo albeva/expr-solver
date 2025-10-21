@@ -1,9 +1,9 @@
 //! Error types for parsing, linking, and program operations.
 
+use crate::SymbolError;
 use crate::span::Span;
 use crate::span::SpanError;
 use thiserror::Error;
-use crate::SymbolError;
 
 /// Errors that can occur during parsing.
 #[derive(Error, Debug)]
@@ -69,9 +69,6 @@ pub enum ProgramError {
     #[cfg(feature = "serialization")]
     #[error("Incompatible program version: expected {expected}, got {found}")]
     IncompatibleVersion { expected: String, found: String },
-
-    #[error("Invalid symbol index: {0}")]
-    InvalidSymbolIndex(usize),
 
     #[cfg(feature = "serialization")]
     #[error("IO error: {0}")]

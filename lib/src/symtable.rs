@@ -113,12 +113,16 @@ impl SymTable {
 
     /// Returns a symbol by index.
     pub fn get_by_index(&self, index: usize) -> Result<&Symbol, SymbolError> {
-        self.symbols.get(index).ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
+        self.symbols
+            .get(index)
+            .ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
     }
 
     /// Returns a symbol by index.
     pub fn get_mut_by_index(&mut self, index: usize) -> Result<&mut Symbol, SymbolError> {
-        self.symbols.get_mut(index).ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
+        self.symbols
+            .get_mut(index)
+            .ok_or_else(|| SymbolError::SymbolNotFound(index.to_string()))
     }
 
     /// Returns an iterator over all symbols in the table.

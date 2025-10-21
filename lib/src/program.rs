@@ -1,21 +1,21 @@
 //! Type-state program implementation for compile-link-execute workflow.
 
-use std::borrow::Cow::Owned;
 use super::ast::{Expr, ExprKind};
 use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use crate::ir::Instr;
+use crate::num;
 use crate::number::Number;
 use crate::span::{Span, SpanError};
-use crate::symbol::{Symbol};
+use crate::symbol::Symbol;
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow::Owned;
 use unicode_width::UnicodeWidthStr;
-use crate::num;
 
 /// Current version of the program format
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -72,7 +72,7 @@ pub struct Compiled {
     origin: ProgramOrigin,
     version: String,
     bytecode: Vec<Instr>,
-    symbols: Vec<SymbolMetadata>
+    symbols: Vec<SymbolMetadata>,
 }
 
 /// Linked state - ready to execute.
@@ -116,11 +116,12 @@ impl<'src> Program<'src, Compiled> {
                 ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
             })?
             .ok_or_else(|| {
+                // TODO: parser returning None is valid, we should not be raising an error here
+                //       maybe add empty expression node to ast or something?
                 let parse_err = ParseError::UnexpectedEof {
                     span: Span::new(0, 0),
                 };
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
+                ProgramError::ParseError(format!("{}", parse_err))
             })?;
 
         // Compile
@@ -132,7 +133,7 @@ impl<'src> Program<'src, Compiled> {
                 origin: ProgramOrigin::Source,
                 version: PROGRAM_VERSION.to_string(),
                 bytecode,
-                symbols
+                symbols,
             },
         })
     }
@@ -182,7 +183,6 @@ impl<'src> Program<'src, Compiled> {
                 idx
             } else {
                 let (idx, symbol) = table.get_with_index(&metadata.name)?;
-                // Validate kind matches
                 Self::validate_symbol_kind(metadata, symbol)?;
                 idx
             };
@@ -214,16 +214,6 @@ impl<'src> Program<'src, Compiled> {
         })
     }
 
-    /// Returns the symbol metadata required by this program.
-    pub fn symbols(&self) -> &[SymbolMetadata] {
-        &self.state.symbols
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
-    }
-
     // ========================================================================
     // Private helpers
     // ========================================================================
@@ -248,7 +238,7 @@ impl<'src> Program<'src, Compiled> {
                 origin,
                 version: binary.version,
                 bytecode: binary.bytecode,
-                symbols: binary.symbols
+                symbols: binary.symbols,
             },
         })
     }
@@ -289,12 +279,7 @@ impl<'src> Program<'src, Compiled> {
 
     /// Generates bytecode and collects symbol metadata in a single AST traversal.
     /// Also extracts and compiles let declarations for evaluation during linking.
-    fn generate_bytecode(
-        ast: &Expr,
-    ) -> (
-        Vec<Instr>,
-        Vec<SymbolMetadata>,
-    ) {
+    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
         let mut bytecode = Vec::new();
         let mut symbols: Vec<SymbolMetadata> = Vec::new();
 
@@ -303,15 +288,16 @@ impl<'src> Program<'src, Compiled> {
             for decl in decls {
                 // ensure we are not re-declaring a symbol
                 if symbols.iter().find(|meta| meta.name == *decl.0).is_some() {
-                    panic!("Symbol `{}` declared multiple times", decl.0); // TODO: return Err
+                    // TODO: Return and propagate an error properly
+                    panic!("Symbol `{}` declared multiple times", decl.0);
                 }
 
                 // expression
                 Self::emit_instr(&(*decl).1, &mut bytecode, &mut symbols);
                 // declare local symbol
                 let idx = symbols.len();
-                symbols.push(SymbolMetadata{
-                    name:  Owned((*decl.0).to_string()), // TODO: get rid of cloning
+                symbols.push(SymbolMetadata {
+                    name: Owned((*decl.0).to_string()), // TODO: can we not clone string?
                     kind: SymbolKind::Const,
                     local: true,
                     index: None,
@@ -351,55 +337,12 @@ impl<'src> Program<'src, Compiled> {
                 Self::emit_instr(right, bytecode, symbols);
                 bytecode.push((*op).into());
             }
-            ExprKind::Call { name, args } => {
-                // Emit arguments first
-                for arg in args {
-                    Self::emit_instr(arg, bytecode, symbols);
-                }
-
-                // Get or create index for this function
-                let idx = Self::get_or_create_symbol(
-                    name,
-                    SymbolKind::Func {
-                        arity: args.len(),
-                        variadic: false, // Will be validated during linking
-                    },
-                    symbols,
-                );
-                bytecode.push(Instr::Call(idx, args.len()));
-            }
+            ExprKind::Call { name, args } => Self::emit_call(*name, args, bytecode, symbols),
             ExprKind::If {
                 cond,
                 then_branch,
                 else_branch,
-            } => {
-                // Emit condition
-                Self::emit_instr(cond, bytecode, symbols);
-
-                // Emit Jz to else branch (placeholder, will be backpatched)
-                let jz_idx = bytecode.len();
-                bytecode.push(Instr::Jz(0)); // Placeholder
-
-                // Emit then branch
-                Self::emit_instr(then_branch, bytecode, symbols);
-
-                // Emit Jmp to end (placeholder, will be backpatched)
-                let jmp_idx = bytecode.len();
-                bytecode.push(Instr::Jmp(0)); // Placeholder
-
-                // else_start: This is where we jump if condition is false
-                let else_start = bytecode.len();
-
-                // Emit else branch
-                Self::emit_instr(else_branch, bytecode, symbols);
-
-                // end: This is where we jump after then branch
-                let end = bytecode.len();
-
-                // Backpatch the jump targets
-                bytecode[jz_idx] = Instr::Jz(else_start);
-                bytecode[jmp_idx] = Instr::Jmp(end);
-            }
+            } => Self::emit_if(cond, then_branch, else_branch, bytecode, symbols),
             ExprKind::Let { body, .. } => {
                 // Let declarations are evaluated at link-time, not compile-time
                 // Only emit bytecode for the body expression
@@ -407,6 +350,66 @@ impl<'src> Program<'src, Compiled> {
                 Self::emit_instr(body, bytecode, symbols);
             }
         }
+    }
+
+    /// Emit bytecode for IF expression
+    fn emit_if(
+        cond: &Expr,
+        then_branch: &Expr,
+        else_branch: &Expr,
+        bytecode: &mut Vec<Instr>,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) {
+        // Emit condition
+        Self::emit_instr(cond, bytecode, symbols);
+
+        // Emit Jz to else branch (placeholder, will be backpatched)
+        let jz_idx = bytecode.len();
+        bytecode.push(Instr::Jz(0)); // Placeholder
+
+        // Emit then branch
+        Self::emit_instr(then_branch, bytecode, symbols);
+
+        // Emit Jmp to end (placeholder, will be backpatched)
+        let jmp_idx = bytecode.len();
+        bytecode.push(Instr::Jmp(0)); // Placeholder
+
+        // else_start: This is where we jump if condition is false
+        let else_start = bytecode.len();
+
+        // Emit else branch
+        Self::emit_instr(else_branch, bytecode, symbols);
+
+        // end: This is where we jump after then branch
+        let end = bytecode.len();
+
+        // Backpatch the jump targets
+        bytecode[jz_idx] = Instr::Jz(else_start);
+        bytecode[jmp_idx] = Instr::Jmp(end);
+    }
+
+    /// Emit bytecode for func call
+    fn emit_call(
+        name: &str,
+        args: &[Expr],
+        bytecode: &mut Vec<Instr>,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) {
+        // Emit arguments first
+        for arg in args {
+            Self::emit_instr(arg, bytecode, symbols);
+        }
+
+        // Get or create index for this function
+        let idx = Self::get_or_create_symbol(
+            name,
+            SymbolKind::Func {
+                arity: args.len(),
+                variadic: false,
+            },
+            symbols,
+        );
+        bytecode.push(Instr::Call(idx, args.len()));
     }
 
     /// Gets existing symbol index or creates a new one.
@@ -495,21 +498,6 @@ impl<'src> Program<'src, Linked> {
         Vm::run(&self.state.bytecode, &mut self.state.symtable)
     }
 
-    /// Returns a reference to the symbol table.
-    pub fn symtable(&self) -> &SymTable {
-        &self.state.symtable
-    }
-
-    /// Returns a mutable reference to the symbol table.
-    pub fn symtable_mut(&mut self) -> &mut SymTable {
-        &mut self.state.symtable
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
-    }
-
     /// Returns a human-readable assembly representation of the program.
     pub fn get_assembly(&self) -> String {
         use std::fmt::Write as _;
@@ -529,7 +517,7 @@ impl<'src> Program<'src, Linked> {
                         .symtable
                         .get_by_index(*idx)
                         .map(|s| s.name())
-                        .unwrap_or("???");
+                        .expect("Symbol not found in assembly");
                     format!("{} {}", "LOAD".magenta(), sym_name.blue())
                 }
                 Instr::Store(idx) => {
@@ -538,9 +526,9 @@ impl<'src> Program<'src, Linked> {
                         .symtable
                         .get_by_index(*idx)
                         .map(|s| s.name())
-                        .unwrap_or("???");
+                        .expect("Symbol not found in assembly");
                     format!("{} {}", "STORE".magenta(), sym_name.blue())
-                },
+                }
                 Instr::Neg => format!("{}", "NEG".magenta()),
                 Instr::Add => format!("{}", "ADD".magenta()),
                 Instr::Sub => format!("{}", "SUB".magenta()),
@@ -554,7 +542,7 @@ impl<'src> Program<'src, Linked> {
                         .symtable
                         .get_by_index(*idx)
                         .map(|s| s.name())
-                        .unwrap_or("???");
+                        .expect("Symbol not found in assembly");
                     format!(
                         "{} {} args: {}",
                         "CALL".magenta(),
@@ -573,7 +561,7 @@ impl<'src> Program<'src, Linked> {
                 }
                 Instr::Jz(target) => {
                     format!("{} {}", "JZ".magenta(), format!("{:04X}", target).yellow())
-                },
+                }
             };
             let _ = writeln!(out, "{}", line);
         }

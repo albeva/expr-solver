@@ -337,7 +337,8 @@ fn test_program_compile_link_execute() {
     let mut program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(14));
 
-    let mut program = load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
+    let mut program =
+        load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(4));
 }
 
@@ -353,7 +354,10 @@ fn test_program_symtable_mutation() {
     assert_eq!(program.execute().expect("execution failed"), num!(30));
 
     // Modify symbol table after linking
-    program.symtable_mut().add_const("z", num!(100), false).unwrap();
+    program
+        .symtable_mut()
+        .add_const("z", num!(100), false)
+        .unwrap();
 
     // x + y should still be 30
     assert_eq!(program.execute().expect("execution failed"), num!(30));
@@ -432,7 +436,10 @@ fn test_let_with_globals() {
     // Use global constants and functions
     assert_eq!(eval_ok("let x = pi then x"), eval_ok("pi"));
     assert_eq!(eval_ok("let x = sin(pi / 2) then x"), num!(1));
-    assert_eq!(eval_ok("let r = 5, area = pi * r ^ 2 then area"), eval_ok("pi * 25"));
+    assert_eq!(
+        eval_ok("let r = 5, area = pi * r ^ 2 then area"),
+        eval_ok("pi * 25")
+    );
 }
 
 #[test]
@@ -448,7 +455,7 @@ fn test_let_error_shadowing_global() {
     // Should error when trying to shadow global constants
     let err = eval_err("let pi = 3 then pi");
     assert!(err.contains("Redefined") || err.contains("already defined"));
-    
+
     let err = eval_err("let e = 2 then e");
     assert!(err.contains("Redefined") || err.contains("already defined"));
 }
@@ -458,7 +465,7 @@ fn test_let_error_duplicate_names() {
     // Should error when same name declared twice in one let
     let err = eval_err("let x = 1, x = 2 then x");
     assert_eq!(err, "Symbol `x` declared multiple times");
-    
+
     let err = eval_err("let x = 1, y = 2, x = 3 then x + y");
     assert_eq!(err, "Symbol `x` declared multiple times");
 }
@@ -482,7 +489,7 @@ fn test_let_with_custom_table() {
     // Using let with a custom symbol table
     let mut table = SymTable::stdlib();
     table.add_const("custom", num!(42), false).unwrap();
-    
+
     let result = eval_with_custom_table_ok("let x = custom * 2 then x", table);
     assert_eq!(result, num!(84));
 }

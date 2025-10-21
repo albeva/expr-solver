@@ -19,7 +19,7 @@ pub enum Token<'src> {
     ParenOpen,
     ParenClose,
     Comma,
-    Assign,       // =
+    Assign, // =
     // Comparison operators
     Equal,        // ==
     NotEqual,     // !=
