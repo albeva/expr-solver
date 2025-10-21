@@ -85,6 +85,7 @@ fn run() -> Result<(), String> {
     }
 
     // Link the program with the symbol table
+    #[allow(unused_mut)] // Mut needed for execute(), but not for assembly printing
     let mut program = program.link(table).map_err(|err| err.to_string())?;
 
     // Act on the loaded program

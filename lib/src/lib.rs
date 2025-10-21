@@ -63,9 +63,13 @@
 //!
 //! # Pretty Printing
 //!
+//! **Requires the `printing` feature (enabled by default)**
+//!
 //! The library can decompile bytecode back to syntax-highlighted expressions:
 //!
 //! ```
+//! # #[cfg(feature = "printing")]
+//! # {
 //! use expr_solver::{Program, Print};
 //!
 //! let program = Program::new_from_source("let x = 10 then x * 2").unwrap();
@@ -74,11 +78,14 @@
 //! println!("{}", program.get_string());
 //! // Or use the Print type directly
 //! println!("{}", Print::new(&program));
+//! # }
 //! ```
 //!
 //! For linked programs, you can print assembly output:
 //!
 //! ```
+//! # #[cfg(feature = "printing")]
+//! # {
 //! use expr_solver::{Program, SymTable};
 //!
 //! let program = Program::new_from_source("2 + 3 * 4").unwrap();
@@ -86,11 +93,14 @@
 //!
 //! // Print assembly
 //! println!("{}", linked.get_assembly());
+//! # }
 //! ```
 //!
 //! Customize colors using [`ExprStyle`]:
 //!
 //! ```
+//! # #[cfg(feature = "printing")]
+//! # {
 //! use expr_solver::{Program, Print, ExprStyle};
 //! use colored::Color;
 //!
@@ -100,6 +110,7 @@
 //!
 //! let printer = Print::with_style(&program, style);
 //! println!("{}", printer);
+//! # }
 //! ```
 //!
 //! # Advanced: Type-State Pattern
@@ -195,8 +206,10 @@ mod lexer;
 mod linker;
 mod metadata;
 mod parser;
+#[cfg(feature = "printing")]
 mod print;
 mod program;
+#[cfg(feature = "printing")]
 mod style;
 
 // Public API
@@ -205,8 +218,10 @@ pub use error::{IrError, LinkerError, ParseError, ProgramError};
 pub use metadata::{SymbolKind, SymbolMetadata};
 pub use number::{Number, ParseNumber};
 pub use parser::Parser;
+#[cfg(feature = "printing")]
 pub use print::Print;
 pub use program::{Compiled, Linked, Program, ProgramOrigin};
+#[cfg(feature = "printing")]
 pub use style::ExprStyle;
 pub use symbol::{Symbol, SymbolError};
 pub use symtable::SymTable;

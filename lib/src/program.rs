@@ -220,6 +220,7 @@ impl<'src> Program<'src, Compiled> {
     /// let highlighted = program.get_string();
     /// println!("{}", highlighted);
     /// ```
+    #[cfg(feature = "printing")]
     pub fn get_string(&self) -> String {
         crate::print::Print::new(self).to_string()
     }
@@ -328,6 +329,7 @@ impl<'src> Program<'src, Linked> {
     /// so this returns a placeholder message.
     ///
     /// This is a convenience method that delegates to [`Print`].
+    #[cfg(feature = "printing")]
     pub fn get_string(&self) -> String {
         crate::print::Print::new(self).get_expr()
     }
@@ -336,6 +338,7 @@ impl<'src> Program<'src, Linked> {
     ///
     /// This is a convenience method that delegates to [`Print::assembly()`].
     /// For custom styling, use [`Print::with_style()`] instead.
+    #[cfg(feature = "printing")]
     pub fn get_assembly(&self) -> String {
         crate::print::Print::new(self).assembly()
     }
