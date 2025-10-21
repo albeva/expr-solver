@@ -515,7 +515,8 @@ fn test_let_if_serialization_roundtrip() {
     // let a = if(5 > 3, 10, 20),
     //     b = if(a > 15, a * 2, a + 5)
     // then if(b < 20, b * 3, b - 10)
-    let source = "let a = if(5 > 3, 10, 20), b = if(a > 15, a * 2, a + 5) then if(b < 20, b * 3, b - 10)";
+    let source =
+        "let a = if(5 > 3, 10, 20), b = if(a > 15, a * 2, a + 5) then if(b < 20, b * 3, b - 10)";
 
     // Compile and execute original
     let program = Program::new_from_source(source).expect("Failed to compile");
@@ -532,7 +533,10 @@ fn test_let_if_serialization_roundtrip() {
     let result2 = relinked.execute().expect("Failed to execute reloaded");
 
     // Results should be identical
-    assert_eq!(result1, result2, "Serialization roundtrip produced different result");
+    assert_eq!(
+        result1, result2,
+        "Serialization roundtrip produced different result"
+    );
 
     // Verify the actual computation is correct:
     // a = if(5 > 3, 10, 20) = 10
