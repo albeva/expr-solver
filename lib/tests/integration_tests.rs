@@ -219,8 +219,8 @@ fn test_syntax_errors() {
 #[rustfmt::skip]
 fn test_semantic_errors() {
     // V2 defers validation to link time
-    assert_eq!(eval_err("foo()"), "Link error: Missing symbol: 'foo' is required by bytecode but not in symbol table");
-    assert_eq!(eval_err("bar"), "Link error: Missing symbol: 'bar' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("foo()"), "Symbol 'foo' not found");
+    assert_eq!(eval_err("bar"), "Symbol 'bar' not found");
     assert_eq!(eval_err("sin(1, 2)"), "Link error: Type mismatch for symbol 'sin': expected exactly 1 arguments, found 2 arguments provided");
     assert_eq!(eval_err("max()"), "Link error: Type mismatch for symbol 'max': expected at least 1 arguments, found 0 arguments provided");
     assert_eq!(eval_err("pi()"), "Link error: Type mismatch for symbol 'pi': expected function, found constant");
@@ -403,7 +403,7 @@ fn test_program_link_validation() {
     let empty_table = SymTable::new();
     let result = program.link(empty_table);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Missing symbol"));
+    assert!(result.unwrap_err().to_string().contains("not found"));
 }
 
 // ============================================================================
@@ -454,34 +454,34 @@ fn test_let_complex_expressions() {
 fn test_let_error_shadowing_global() {
     // Should error when trying to shadow global constants
     let err = eval_err("let pi = 3 then pi");
-    assert!(err.contains("Redefined") || err.contains("already defined"));
+    assert_eq!(err, "Duplicate symbol definition: 'pi'");
 
     let err = eval_err("let e = 2 then e");
-    assert!(err.contains("Redefined") || err.contains("already defined"));
+    assert_eq!(err, "Duplicate symbol definition: 'e'");
 }
 
 #[test]
 fn test_let_error_duplicate_names() {
     // Should error when same name declared twice in one let
     let err = eval_err("let x = 1, x = 2 then x");
-    assert_eq!(err, "Symbol `x` declared multiple times");
+    assert_eq!(err, "Duplicate symbol definition: 'x'");
 
     let err = eval_err("let x = 1, y = 2, x = 3 then x + y");
-    assert_eq!(err, "Symbol `x` declared multiple times");
+    assert_eq!(err, "Duplicate symbol definition: 'x'");
 }
 
 #[test]
 fn test_let_error_forward_reference() {
     // Should error when referencing a variable before it's declared
     let err = eval_err("let x = y, y = 1 then x");
-    assert!(err.contains("Missing symbol") || err.contains("not found"));
+    assert_eq!(err, "Duplicate symbol definition: 'y'");
 }
 
 #[test]
 fn test_let_error_self_reference() {
     // Should error when variable references itself in its own definition
     let err = eval_err("let x = x + 1 then x");
-    assert!(err.contains("Missing symbol") || err.contains("not found"));
+    assert_eq!(err, "Symbol 'x' not found");
 }
 
 #[test]

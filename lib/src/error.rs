@@ -29,21 +29,12 @@ impl SpanError for ParseError {
 /// Errors that can occur during linking.
 #[derive(Error, Debug)]
 pub enum LinkError {
-    #[error("Missing symbol: '{name}' is required by bytecode but not in symbol table")]
-    MissingSymbol { name: String },
-
     #[error("Type mismatch for symbol '{name}': expected {expected}, found {found}")]
     TypeMismatch {
         name: String,
         expected: String,
         found: String,
     },
-
-    #[error("Redefined symbol: '{name}' is already defined (no shadowing allowed)")]
-    RedefinedSymbol { name: String },
-
-    #[error("Symbol table error: {0}")]
-    SymbolTableError(#[from] SymbolError),
 }
 
 /// Errors that can occur during program operations.

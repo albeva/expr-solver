@@ -173,22 +173,11 @@ impl<'src> Program<'src, Compiled> {
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
             let resolved_idx = if metadata.local {
-                // Check if trying to shadow a global symbol
-                if table.get_by_name(&metadata.name).is_ok() {
-                    return Err(LinkError::RedefinedSymbol {
-                        name: metadata.name.to_string(),
-                    }
-                    .into());
-                }
                 let idx = table.symbols().count();
                 table.add_const(metadata.name.to_string(), num!(0), true)?;
                 idx
             } else {
-                let (idx, symbol) = table.get_with_index(&metadata.name).map_err(|_| {
-                    LinkError::MissingSymbol {
-                        name: metadata.name.to_string(),
-                    }
-                })?;
+                let (idx, symbol) = table.get_with_index(&metadata.name)?;
                 Self::validate_symbol_kind(metadata, symbol)?;
                 idx
             };
@@ -294,10 +283,7 @@ impl<'src> Program<'src, Compiled> {
             for decl in decls {
                 // ensure we are not re-declaring a symbol
                 if symbols.iter().any(|meta| meta.name == *decl.0) {
-                    return Err(ProgramError::ParseError(format!(
-                        "Symbol `{}` declared multiple times",
-                        decl.0
-                    )));
+                    return Err(crate::SymbolError::DuplicateSymbol(decl.0.to_string()).into());
                 }
 
                 // expression
