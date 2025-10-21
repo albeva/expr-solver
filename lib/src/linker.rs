@@ -1,4 +1,27 @@
 //! Linker for resolving symbols and linking bytecode with a symbol table.
+//!
+//! The [`Linker`] is responsible for the third stage of compilation:
+//! resolving symbol references and producing executable bytecode.
+//!
+//! # Process
+//!
+//! 1. Validate all symbol references exist in the symbol table
+//! 2. Verify symbol types match their usage (constant vs function, arity checking)
+//! 3. Resolve symbol indices (map compile-time indices to runtime indices)
+//! 4. Rewrite bytecode to use resolved indices
+//! 5. Return linked bytecode and symbol table ready for execution
+//!
+//! # Example
+//!
+//! ```ignore
+//! use expr_solver::linker::Linker;
+//! use expr_solver::SymTable;
+//!
+//! // Assume we have bytecode and symbols from IrBuilder
+//! let linker = Linker::new(bytecode, symbols, SymTable::stdlib());
+//! let (linked_bytecode, symtable) = linker.link().unwrap();
+//! // linked_bytecode is ready to execute on the VM
+//! ```
 
 use crate::error::{LinkError, LinkerError};
 use crate::ir::Instr;

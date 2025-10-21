@@ -1,4 +1,30 @@
 //! IR (bytecode) builder for compiling AST to bytecode.
+//!
+//! The [`IrBuilder`] is responsible for the second stage of compilation:
+//! transforming the Abstract Syntax Tree (AST) into bytecode instructions
+//! and collecting symbol metadata.
+//!
+//! # Process
+//!
+//! 1. Traverse the AST recursively
+//! 2. Emit bytecode instructions for each expression
+//! 3. Collect symbol references (functions and constants)
+//! 4. Handle `let` declarations by creating local symbols
+//! 5. Return bytecode and symbol metadata for linking
+//!
+//! # Example
+//!
+//! ```ignore
+//! use expr_solver::ir_builder::IrBuilder;
+//! use expr_solver::parser::Parser;
+//!
+//! let mut parser = Parser::new("let x = 5 then x * 2");
+//! let ast = parser.parse().unwrap().unwrap();
+//!
+//! let (bytecode, symbols) = IrBuilder::new().build(&ast).unwrap();
+//! // bytecode contains instructions to compute the expression
+//! // symbols contains metadata about 'x' (local) and any other references
+//! ```
 
 use crate::ast::{Expr, ExprKind};
 use crate::error::IrError;

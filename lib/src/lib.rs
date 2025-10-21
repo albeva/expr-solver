@@ -10,6 +10,8 @@
 //! - **Rich error messages** - Parse errors with syntax highlighting
 //! - **Bytecode compilation** - Compile once, execute many times
 //! - **Custom symbols** - Add your own constants and functions
+//! - **Local constants** - `let` ... `then` syntax for declaring scoped constants
+//! - **Control flow** - Conditional expressions with `if(condition, then, else)`
 //! - **Serialization** - Save/load compiled programs (requires `serialization` feature)
 //!
 //! ## Numeric Type Selection
@@ -68,15 +70,59 @@
 //! assert_eq!(result.to_string(), "15");
 //! ```
 //!
+//! # Local Constants with LET THEN
+//!
+//! Declare local constants using `let` ... `then` syntax:
+//!
+//! ```
+//! use expr_solver::eval;
+//!
+//! // Single declaration
+//! let result = eval("let x = 10 then x * 2").unwrap();
+//! assert_eq!(result.to_string(), "20");
+//!
+//! // Multiple declarations
+//! let result = eval("let x = 5, y = 3 then x + y").unwrap();
+//! assert_eq!(result.to_string(), "8");
+//!
+//! // Reference previous declarations
+//! let result = eval("let x = 2, y = x * 3, z = y + 1 then z").unwrap();
+//! assert_eq!(result.to_string(), "7");
+//!
+//! // Use with globals and functions
+//! let result = eval("let r = 5, area = pi * r ^ 2 then area").unwrap();
+//! assert!(result.to_string().starts_with("78.5"));
+//! ```
+//!
+//! **Notes:**
+//! - Local constants are evaluated left-to-right
+//! - Can reference previously declared locals and globals
+//! - Cannot reference forward (e.g., `let x = y, y = 1 then x` is an error)
+//! - Cannot shadow global constants (e.g., `let pi = 3 then pi` is an error)
+//! - Duplicate names in the same `let` block are errors
+//!
 //! # Supported Operators
 //!
 //! - Arithmetic: `+`, `-`, `*`, `/`, `^` (power), `!` (factorial), unary `-`
 //! - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (return 1 or 0)
 //! - Grouping: `(` `)`
+//! - Control flow: `if(condition, then_value, else_value)`
 //!
 //! # Built-in Functions
 //!
 //! See [`SymTable::stdlib()`] for the complete list of built-in functions and constants.
+//!
+//! # Architecture
+//!
+//! The library uses a multi-stage compilation pipeline:
+//!
+//! 1. **Parsing** ([`Parser`]) - Source code → Abstract Syntax Tree (AST)
+//! 2. **IR Generation** ([`IrBuilder`]) - AST → Bytecode + Symbol metadata
+//! 3. **Linking** ([`Linker`]) - Bytecode + SymTable → Linked bytecode
+//! 4. **Execution** ([`Vm`]) - Linked bytecode → Result
+//!
+//! Each stage has its own error type ([`ParseError`], [`IrError`], [`LinkerError`], [`VmError`])
+//! which automatically converts to [`ProgramError`] for convenience.
 
 // Core types (shared)
 mod ir;

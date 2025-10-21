@@ -1,4 +1,13 @@
 //! Type-state program implementation for compile-link-execute workflow.
+//!
+//! This module provides the [`Program`] type which orchestrates the compilation pipeline:
+//!
+//! 1. **Parsing** - Source code is parsed into an AST using [`Parser`]
+//! 2. **IR Generation** - AST is compiled to bytecode using [`IrBuilder`]
+//! 3. **Linking** - Bytecode is linked with a symbol table using [`Linker`]
+//! 4. **Execution** - Linked bytecode is executed on the VM
+//!
+//! The type-state pattern ensures these stages occur in the correct order at compile time.
 
 use super::error::{ParseError, ProgramError};
 use super::ir_builder::IrBuilder;
