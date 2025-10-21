@@ -16,6 +16,8 @@ pub struct SymbolMetadata {
     pub name: Cow<'static, str>,
     /// The kind and requirements of the symbol
     pub kind: SymbolKind,
+    /// Local or global?
+    pub local: bool,
     /// The resolved index in the linked symbol table (None until linked)
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub index: Option<usize>,
@@ -53,6 +55,7 @@ impl From<&Symbol> for SymbolMetadata {
         SymbolMetadata {
             name: symbol.name().to_string().into(),
             kind: symbol.into(),
+            local: symbol.is_local(),
             index: None,
         }
     }

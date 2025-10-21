@@ -39,6 +39,10 @@ pub enum SymbolError {
     /// A symbol with this name already exists in the table.
     #[error("Duplicate symbol definition: '{0}'")]
     DuplicateSymbol(String),
+
+    /// Fired when no symbol with given name exists
+    #[error("Symbol '{0}' not found")]
+    SymbolNotFound(String),
 }
 
 /// A symbol representing either a constant or function.
@@ -51,6 +55,8 @@ pub enum Symbol {
         name: Cow<'static, str>,
         value: Number,
         description: Option<Cow<'static, str>>,
+        /// Whether this is a local constant (from let) or global (from stdlib)
+        local: bool,
     },
     /// Function with specified arity and callback.
     Func {
@@ -61,6 +67,8 @@ pub enum Symbol {
         variadic: bool,
         callback: fn(&[Number]) -> Result<Number, FuncError>,
         description: Option<Cow<'static, str>>,
+        /// Whether this is a local function (reserved for future use) or global (from stdlib)
+        local: bool,
     },
 }
 
@@ -78,6 +86,14 @@ impl Symbol {
         match self {
             Symbol::Const { description, .. } => description.as_deref(),
             Symbol::Func { description, .. } => description.as_deref(),
+        }
+    }
+
+    /// Returns whether this symbol is local (from let) or global (from stdlib).
+    pub fn is_local(&self) -> bool {
+        match self {
+            Symbol::Const { local, .. } => *local,
+            Symbol::Func { local, .. } => *local,
         }
     }
 }

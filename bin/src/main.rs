@@ -75,7 +75,7 @@ fn run() -> Result<(), String> {
     };
 
     // Link the program with the symbol table
-    let program = program.link(table).map_err(|err| err.to_string())?;
+    let mut program = program.link(table).map_err(|err| err.to_string())?;
 
     // Act on the loaded program
     if args.assembly {
@@ -106,7 +106,7 @@ fn create_symbol_table(defines: &[(String, Number)]) -> Result<SymTable, String>
         }
 
         table
-            .add_const(name.clone(), *value)
+            .add_const(name.clone(), *value, false)
             .map_err(|e| format!("Failed to add constant '{}': {}", name, e))?;
     }
 

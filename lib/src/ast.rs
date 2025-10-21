@@ -102,6 +102,11 @@ pub enum ExprKind<'src> {
         then_branch: Box<Expr<'src>>,
         else_branch: Box<Expr<'src>>,
     },
+    /// Let expression with local constant declarations
+    Let {
+        decls: Vec<(&'src str, Expr<'src>)>,
+        body: Box<Expr<'src>>,
+    },
 }
 
 impl<'src> Expr<'src> {
@@ -158,6 +163,16 @@ impl<'src> Expr<'src> {
                 cond: Box::new(cond),
                 then_branch: Box::new(then_branch),
                 else_branch: Box::new(else_branch),
+            },
+            span,
+        }
+    }
+
+    pub fn let_expr(decls: Vec<(&'src str, Expr<'src>)>, body: Expr<'src>, span: Span) -> Self {
+        Self {
+            kind: ExprKind::Let {
+                decls,
+                body: Box::new(body),
             },
             span,
         }

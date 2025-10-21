@@ -150,9 +150,9 @@ fn test_complex_expressions() {
 #[test]
 fn test_custom_symbols() {
     let mut table = SymTable::stdlib();
-    table.add_const("my_const", num!(123)).unwrap();
+    table.add_const("my_const", num!(123), false).unwrap();
     table
-        .add_func("add_one", 1, false, |args| Ok(args[0] + num!(1)))
+        .add_func("add_one", 1, false, |args| Ok(args[0] + num!(1)), false)
         .unwrap();
 
     assert_eq!(
@@ -168,9 +168,9 @@ fn test_custom_symbols() {
 #[test]
 fn test_emoji_identifiers() {
     let mut table = SymTable::stdlib();
-    table.add_const("x😀", num!(10)).unwrap();
+    table.add_const("x😀", num!(10), false).unwrap();
     table
-        .add_func("add🚀", 2, false, |args| Ok(args[0] + args[1]))
+        .add_func("add🚀", 2, false, |args| Ok(args[0] + args[1]), false)
         .unwrap();
 
     assert_eq!(
@@ -219,8 +219,8 @@ fn test_syntax_errors() {
 #[rustfmt::skip]
 fn test_semantic_errors() {
     // V2 defers validation to link time
-    assert_eq!(eval_err("foo()"), "Link error: Missing symbol: 'foo' is required by bytecode but not in symbol table");
-    assert_eq!(eval_err("bar"), "Link error: Missing symbol: 'bar' is required by bytecode but not in symbol table");
+    assert_eq!(eval_err("foo()"), "Symbol 'foo' not found");
+    assert_eq!(eval_err("bar"), "Symbol 'bar' not found");
     assert_eq!(eval_err("sin(1, 2)"), "Link error: Type mismatch for symbol 'sin': expected exactly 1 arguments, found 2 arguments provided");
     assert_eq!(eval_err("max()"), "Link error: Type mismatch for symbol 'max': expected at least 1 arguments, found 0 arguments provided");
     assert_eq!(eval_err("pi()"), "Link error: Type mismatch for symbol 'pi': expected function, found constant");
@@ -334,10 +334,11 @@ fn load(expr: &'static str) -> Result<Program<'static, Compiled>, String> {
 
 #[test]
 fn test_program_compile_link_execute() {
-    let program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
+    let mut program = load_with_table("2 + 3 * 4", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(14));
 
-    let program = load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
+    let mut program =
+        load_with_table("sqrt(16) + sin(0)", SymTable::stdlib()).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(4));
 }
 
@@ -346,14 +347,17 @@ fn test_program_symtable_mutation() {
     let program = load("x + y").expect("compilation failed");
 
     let mut table = SymTable::new();
-    table.add_const("x", num!(10)).unwrap();
-    table.add_const("y", num!(20)).unwrap();
+    table.add_const("x", num!(10), false).unwrap();
+    table.add_const("y", num!(20), false).unwrap();
 
     let mut program = program.link(table).expect("link failed");
     assert_eq!(program.execute().expect("execution failed"), num!(30));
 
     // Modify symbol table after linking
-    program.symtable_mut().add_const("z", num!(100)).unwrap();
+    program
+        .symtable_mut()
+        .add_const("z", num!(100), false)
+        .unwrap();
 
     // x + y should still be 30
     assert_eq!(program.execute().expect("execution failed"), num!(30));
@@ -362,7 +366,7 @@ fn test_program_symtable_mutation() {
 #[test]
 #[cfg(feature = "serialization")]
 fn test_program_serialization() {
-    let program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
+    let mut program = load_with_table("sqrt(pi) + 2", SymTable::stdlib()).expect("link failed");
 
     // Execute original
     let result1 = program.execute().expect("execution failed");
@@ -372,7 +376,7 @@ fn test_program_serialization() {
 
     // Deserialize and re-link
     use expr_solver::Program;
-    let program2 = Program::new_from_bytecode(&bytes)
+    let mut program2 = Program::new_from_bytecode(&bytes)
         .expect("deserialization failed")
         .link(SymTable::stdlib())
         .expect("link failed");
@@ -399,5 +403,101 @@ fn test_program_link_validation() {
     let empty_table = SymTable::new();
     let result = program.link(empty_table);
     assert!(result.is_err());
-    assert!(result.unwrap_err().to_string().contains("Missing symbol"));
+    assert!(result.unwrap_err().to_string().contains("not found"));
+}
+
+// ============================================================================
+// Let Statement Tests
+// ============================================================================
+
+#[test]
+fn test_let_simple() {
+    // Single declaration
+    assert_eq!(eval_ok("let x = 10 then x"), num!(10));
+    assert_eq!(eval_ok("let x = 5 * 2 then x + 1"), num!(11));
+}
+
+#[test]
+fn test_let_multiple_declarations() {
+    // Multiple declarations
+    assert_eq!(eval_ok("let x = 2, y = 3 then x + y"), num!(5));
+    assert_eq!(eval_ok("let x = 1, y = 2, z = 3 then x + y + z"), num!(6));
+}
+
+#[test]
+fn test_let_reference_previous() {
+    // Reference previously declared let variables
+    assert_eq!(eval_ok("let x = 1, y = x + 1 then y"), num!(2));
+    assert_eq!(eval_ok("let x = 2, y = x * 3, z = y + 1 then z"), num!(7));
+}
+
+#[test]
+fn test_let_with_globals() {
+    // Use global constants and functions
+    assert_eq!(eval_ok("let x = pi then x"), eval_ok("pi"));
+    assert_eq!(eval_ok("let x = sin(pi / 2) then x"), num!(1));
+    assert_eq!(
+        eval_ok("let r = 5, area = pi * r ^ 2 then area"),
+        eval_ok("pi * 25")
+    );
+}
+
+#[test]
+fn test_let_complex_expressions() {
+    // Complex expressions in declarations
+    assert_eq!(eval_ok("let x = if(1 < 2, 10, 20) then x"), num!(10));
+    assert_eq!(eval_ok("let x = 2, y = x ^ 3 then y * 2"), num!(16));
+    assert_eq!(eval_ok("let x = sqrt(16), y = x + 4 then y"), num!(8));
+}
+
+#[test]
+fn test_let_error_shadowing_global() {
+    // Should error when trying to shadow global constants
+    let err = eval_err("let pi = 3 then pi");
+    assert_eq!(err, "Duplicate symbol definition: 'pi'");
+
+    let err = eval_err("let e = 2 then e");
+    assert_eq!(err, "Duplicate symbol definition: 'e'");
+}
+
+#[test]
+fn test_let_error_duplicate_names() {
+    // Should error when same name declared twice in one let
+    let err = eval_err("let x = 1, x = 2 then x");
+    assert_eq!(err, "Duplicate symbol definition: 'x'");
+
+    let err = eval_err("let x = 1, y = 2, x = 3 then x + y");
+    assert_eq!(err, "Duplicate symbol definition: 'x'");
+}
+
+#[test]
+fn test_let_error_forward_reference() {
+    // Should error when referencing a variable before it's declared
+    let err = eval_err("let x = y, y = 1 then x");
+    assert_eq!(err, "Duplicate symbol definition: 'y'");
+}
+
+#[test]
+fn test_let_error_self_reference() {
+    // Should error when variable references itself in its own definition
+    let err = eval_err("let x = x + 1 then x");
+    assert_eq!(err, "Symbol 'x' not found");
+}
+
+#[test]
+fn test_let_with_custom_table() {
+    // Using let with a custom symbol table
+    let mut table = SymTable::stdlib();
+    table.add_const("custom", num!(42), false).unwrap();
+
+    let result = eval_with_custom_table_ok("let x = custom * 2 then x", table);
+    assert_eq!(result, num!(84));
+}
+
+#[test]
+fn test_let_case_insensitive_keywords() {
+    // Keywords should be case-insensitive
+    assert_eq!(eval_ok("LET x = 10 THEN x"), num!(10));
+    assert_eq!(eval_ok("Let x = 5 Then x * 2"), num!(10));
+    assert_eq!(eval_ok("leT x = 3, y = 7 tHeN x + y"), num!(10));
 }

@@ -71,6 +71,7 @@ impl<'src> Parser<'src> {
                 Ok(Expr::ident(id, span))
             }
             Token::If => self.if_expr(span),
+            Token::Let => self.let_expr(span),
             Token::Minus => {
                 self.advance();
                 let expr = self.primary()?;
@@ -171,6 +172,52 @@ impl<'src> Parser<'src> {
 
         let span = span.merge(self.span);
         Ok(Expr::if_expr(cond, then_branch, else_branch, span))
+    }
+
+    fn let_expr(&mut self, span: Span) -> ParseResult<'src> {
+        // Expect: let name = expr, name = expr, ... then body
+        self.advance(); // consume 'let'
+
+        // Parse at least one declaration
+        let mut decls = vec![self.parse_let_decl()?];
+
+        // Parse remaining declarations separated by commas
+        while self.accept(&Token::Comma) {
+            decls.push(self.parse_let_decl()?);
+        }
+
+        // Expect 'then'
+        self.expect(&Token::Then)?;
+
+        // Parse body
+        let body = self.expression()?;
+
+        let span = span.merge(self.span);
+        Ok(Expr::let_expr(decls, body, span))
+    }
+
+    fn parse_let_decl(&mut self) -> Result<(&'src str, Expr<'src>), ParseError> {
+        // Parse: name = expr
+        let name = self.ident()?;
+        self.expect(&Token::Assign)?;
+        let expr = self.expression()?;
+        Ok((name, expr))
+    }
+
+    fn ident(&mut self) -> Result<&'src str, ParseError> {
+        match self.lookahead {
+            Token::Ident(id) => {
+                self.advance();
+                Ok(id)
+            }
+            _ => Err(ParseError::UnexpectedToken {
+                message: format!(
+                    "expected identifier in let declaration, found '{}'",
+                    self.lookahead.lexeme()
+                ),
+                span: self.span,
+            }),
+        }
     }
 
     fn advance(&mut self) {

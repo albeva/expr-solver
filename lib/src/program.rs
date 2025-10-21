@@ -5,14 +5,16 @@ use super::error::{LinkError, ParseError, ProgramError};
 use super::metadata::{SymbolKind, SymbolMetadata};
 use super::parser::Parser;
 use crate::ir::Instr;
+use crate::num;
 use crate::number::Number;
-use crate::span::{Span, SpanError};
+use crate::span::SpanError;
 use crate::symbol::Symbol;
 use crate::symtable::SymTable;
 use crate::vm::{Vm, VmError};
 use colored::Colorize;
 #[cfg(feature = "serialization")]
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow::Owned;
 use unicode_width::UnicodeWidthStr;
 
 /// Current version of the program format
@@ -52,8 +54,8 @@ pub enum ProgramOrigin {
 ///
 /// // Link with symbol table
 /// let mut table = SymTable::new();
-/// table.add_const("x", num!(5)).unwrap();
-/// let linked = program.link(table).unwrap();
+/// table.add_const("x", num!(5), false).unwrap();
+/// let mut linked = program.link(table).unwrap();
 ///
 /// // Execute
 /// assert_eq!(linked.execute().unwrap().to_string(), "11");
@@ -106,23 +108,19 @@ impl<'src> Program<'src, Compiled> {
 
         // Parse
         let mut parser = Parser::new(trimmed);
-        let ast = parser
-            .parse()
-            .map_err(|parse_err| {
-                // Format error with source highlighting
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
-            })?
-            .ok_or_else(|| {
-                let parse_err = ParseError::UnexpectedEof {
-                    span: Span::new(0, 0),
-                };
-                let highlighted = Self::highlight_error(trimmed, &parse_err);
-                ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
-            })?;
+        let ast_opt = parser.parse().map_err(|parse_err| {
+            // Format error with source highlighting
+            let highlighted = Self::highlight_error(trimmed, &parse_err);
+            ProgramError::ParseError(format!("{}\n{}", parse_err, highlighted))
+        })?;
 
-        // Compile
-        let (bytecode, symbols) = Self::generate_bytecode(&ast);
+        // Compile (handle empty input by creating empty bytecode)
+        let (bytecode, symbols) = if let Some(ast) = ast_opt {
+            Self::generate_bytecode(&ast)?
+        } else {
+            // Empty input -> empty program (VM will return 0)
+            (Vec::new(), Vec::new())
+        };
 
         Ok(Program {
             source: Some(trimmed),
@@ -171,18 +169,18 @@ impl<'src> Program<'src, Compiled> {
     /// let program = Program::new_from_source("sin(pi)").unwrap();
     /// let linked = program.link(SymTable::stdlib()).unwrap();
     /// ```
-    pub fn link(mut self, table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
+    pub fn link(mut self, mut table: SymTable) -> Result<Program<'src, Linked>, ProgramError> {
         // Validate symbols and fill in their resolved indices
         for metadata in &mut self.state.symbols {
-            let (resolved_idx, symbol) =
-                table
-                    .get_with_index(&metadata.name)
-                    .ok_or_else(|| LinkError::MissingSymbol {
-                        name: metadata.name.to_string(),
-                    })?;
-
-            // Validate kind matches
-            Self::validate_symbol_kind(metadata, symbol)?;
+            let resolved_idx = if metadata.local {
+                let idx = table.symbols().count();
+                table.add_const(metadata.name.to_string(), num!(0), true)?;
+                idx
+            } else {
+                let (idx, symbol) = table.get_with_index(&metadata.name)?;
+                Self::validate_symbol_kind(metadata, symbol)?;
+                idx
+            };
 
             // Store resolved index in metadata
             metadata.index = Some(resolved_idx);
@@ -191,12 +189,7 @@ impl<'src> Program<'src, Compiled> {
         // Rewrite all indices in bytecode using resolved indices from metadata
         for instr in &mut self.state.bytecode {
             match instr {
-                Instr::Load(idx) => {
-                    *idx = self.state.symbols[*idx]
-                        .index
-                        .expect("Symbol should have been resolved during linking");
-                }
-                Instr::Call(idx, _) => {
+                Instr::Load(idx) | Instr::Store(idx) | Instr::Call(idx, _) => {
                     *idx = self.state.symbols[*idx]
                         .index
                         .expect("Symbol should have been resolved during linking");
@@ -214,16 +207,6 @@ impl<'src> Program<'src, Compiled> {
                 symtable: table,
             },
         })
-    }
-
-    /// Returns the symbol metadata required by this program.
-    pub fn symbols(&self) -> &[SymbolMetadata] {
-        &self.state.symbols
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
     }
 
     // ========================================================================
@@ -290,11 +273,42 @@ impl<'src> Program<'src, Compiled> {
     }
 
     /// Generates bytecode and collects symbol metadata in a single AST traversal.
-    fn generate_bytecode(ast: &Expr) -> (Vec<Instr>, Vec<SymbolMetadata>) {
+    /// Also extracts and compiles let declarations for evaluation during linking.
+    fn generate_bytecode(ast: &Expr) -> Result<(Vec<Instr>, Vec<SymbolMetadata>), ProgramError> {
         let mut bytecode = Vec::new();
-        let mut symbols = Vec::new();
-        Self::emit_instr(ast, &mut bytecode, &mut symbols);
-        (bytecode, symbols)
+        let mut symbols: Vec<SymbolMetadata> = Vec::new();
+
+        // Handle local symbols
+        let body = if let ExprKind::Let { decls, body } = &ast.kind {
+            for decl in decls {
+                // ensure we are not re-declaring a symbol
+                if symbols.iter().any(|meta| meta.name == *decl.0) {
+                    return Err(crate::SymbolError::DuplicateSymbol(decl.0.to_string()).into());
+                }
+
+                // expression
+                Self::emit_instr(&(*decl).1, &mut bytecode, &mut symbols);
+                // declare local symbol
+                let idx = symbols.len();
+                symbols.push(SymbolMetadata {
+                    name: Owned((*decl.0).to_string()),
+                    kind: SymbolKind::Const,
+                    local: true,
+                    index: None,
+                });
+                // Store the value
+                bytecode.push(Instr::Store(idx));
+            }
+            body
+        } else {
+            ast
+        };
+
+        // Emit the expression instructions
+        Self::emit_instr(body, &mut bytecode, &mut symbols);
+
+        // Done
+        Ok((bytecode, symbols))
     }
 
     /// Emits bytecode instructions for an expression node.
@@ -317,56 +331,79 @@ impl<'src> Program<'src, Compiled> {
                 Self::emit_instr(right, bytecode, symbols);
                 bytecode.push((*op).into());
             }
-            ExprKind::Call { name, args } => {
-                // Emit arguments first
-                for arg in args {
-                    Self::emit_instr(arg, bytecode, symbols);
-                }
-
-                // Get or create index for this function
-                let idx = Self::get_or_create_symbol(
-                    name,
-                    SymbolKind::Func {
-                        arity: args.len(),
-                        variadic: false, // Will be validated during linking
-                    },
-                    symbols,
-                );
-                bytecode.push(Instr::Call(idx, args.len()));
-            }
+            ExprKind::Call { name, args } => Self::emit_call(*name, args, bytecode, symbols),
             ExprKind::If {
                 cond,
                 then_branch,
                 else_branch,
-            } => {
-                // Emit condition
-                Self::emit_instr(cond, bytecode, symbols);
-
-                // Emit Jz to else branch (placeholder, will be backpatched)
-                let jz_idx = bytecode.len();
-                bytecode.push(Instr::Jz(0)); // Placeholder
-
-                // Emit then branch
-                Self::emit_instr(then_branch, bytecode, symbols);
-
-                // Emit Jmp to end (placeholder, will be backpatched)
-                let jmp_idx = bytecode.len();
-                bytecode.push(Instr::Jmp(0)); // Placeholder
-
-                // else_start: This is where we jump if condition is false
-                let else_start = bytecode.len();
-
-                // Emit else branch
-                Self::emit_instr(else_branch, bytecode, symbols);
-
-                // end: This is where we jump after then branch
-                let end = bytecode.len();
-
-                // Backpatch the jump targets
-                bytecode[jz_idx] = Instr::Jz(else_start);
-                bytecode[jmp_idx] = Instr::Jmp(end);
+            } => Self::emit_if(cond, then_branch, else_branch, bytecode, symbols),
+            ExprKind::Let { body, .. } => {
+                // Let declarations are evaluated at link-time, not compile-time
+                // Only emit bytecode for the body expression
+                // The declarations will be processed during linking
+                Self::emit_instr(body, bytecode, symbols);
             }
         }
+    }
+
+    /// Emit bytecode for IF expression
+    fn emit_if(
+        cond: &Expr,
+        then_branch: &Expr,
+        else_branch: &Expr,
+        bytecode: &mut Vec<Instr>,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) {
+        // Emit condition
+        Self::emit_instr(cond, bytecode, symbols);
+
+        // Emit Jz to else branch (placeholder, will be backpatched)
+        let jz_idx = bytecode.len();
+        bytecode.push(Instr::Jz(0)); // Placeholder
+
+        // Emit then branch
+        Self::emit_instr(then_branch, bytecode, symbols);
+
+        // Emit Jmp to end (placeholder, will be backpatched)
+        let jmp_idx = bytecode.len();
+        bytecode.push(Instr::Jmp(0)); // Placeholder
+
+        // else_start: This is where we jump if condition is false
+        let else_start = bytecode.len();
+
+        // Emit else branch
+        Self::emit_instr(else_branch, bytecode, symbols);
+
+        // end: This is where we jump after then branch
+        let end = bytecode.len();
+
+        // Backpatch the jump targets
+        bytecode[jz_idx] = Instr::Jz(else_start);
+        bytecode[jmp_idx] = Instr::Jmp(end);
+    }
+
+    /// Emit bytecode for func call
+    fn emit_call(
+        name: &str,
+        args: &[Expr],
+        bytecode: &mut Vec<Instr>,
+        symbols: &mut Vec<SymbolMetadata>,
+    ) {
+        // Emit arguments first
+        for arg in args {
+            Self::emit_instr(arg, bytecode, symbols);
+        }
+
+        // Get or create index for this function
+        let idx = Self::get_or_create_symbol(
+            name,
+            SymbolKind::Func {
+                arity: args.len(),
+                variadic: false,
+            },
+            symbols,
+        );
+        bytecode.push(Instr::Call(idx, args.len()));
     }
 
     /// Gets existing symbol index or creates a new one.
@@ -385,6 +422,7 @@ impl<'src> Program<'src, Compiled> {
         symbols.push(SymbolMetadata {
             name: name.to_string().into(),
             kind,
+            local: false,
             index: None,
         });
         symbols.len() - 1
@@ -450,23 +488,13 @@ impl<'src> Program<'src, Linked> {
     // ========================================================================
 
     /// Executes the program and returns the result.
-    pub fn execute(&self) -> Result<Number, VmError> {
-        Vm::run(&self.state.bytecode, &self.state.symtable)
-    }
-
-    /// Returns a reference to the symbol table.
-    pub fn symtable(&self) -> &SymTable {
-        &self.state.symtable
+    pub fn execute(&mut self) -> Result<Number, VmError> {
+        Vm::run(&self.state.bytecode, &mut self.state.symtable)
     }
 
     /// Returns a mutable reference to the symbol table.
     pub fn symtable_mut(&mut self) -> &mut SymTable {
         &mut self.state.symtable
-    }
-
-    /// Returns the version of this program.
-    pub fn version(&self) -> &str {
-        &self.state.version
     }
 
     /// Returns a human-readable assembly representation of the program.
@@ -488,8 +516,17 @@ impl<'src> Program<'src, Linked> {
                         .symtable
                         .get_by_index(*idx)
                         .map(|s| s.name())
-                        .unwrap_or("???");
+                        .expect("Symbol not found in assembly");
                     format!("{} {}", "LOAD".magenta(), sym_name.blue())
+                }
+                Instr::Store(idx) => {
+                    let sym_name = self
+                        .state
+                        .symtable
+                        .get_by_index(*idx)
+                        .map(|s| s.name())
+                        .expect("Symbol not found in assembly");
+                    format!("{} {}", "STORE".magenta(), sym_name.blue())
                 }
                 Instr::Neg => format!("{}", "NEG".magenta()),
                 Instr::Add => format!("{}", "ADD".magenta()),
@@ -504,7 +541,7 @@ impl<'src> Program<'src, Linked> {
                         .symtable
                         .get_by_index(*idx)
                         .map(|s| s.name())
-                        .unwrap_or("???");
+                        .expect("Symbol not found in assembly");
                     format!(
                         "{} {} args: {}",
                         "CALL".magenta(),

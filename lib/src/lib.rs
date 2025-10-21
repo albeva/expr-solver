@@ -40,7 +40,7 @@
 //! use expr_solver::{num, eval_with_table, SymTable};
 //!
 //! let mut table = SymTable::stdlib();
-//! table.add_const("x", num!(10)).unwrap();
+//! table.add_const("x", num!(10), false).unwrap();
 //!
 //! let result = eval_with_table("x * 2", table).unwrap();
 //! assert_eq!(result.to_string(), "20");
@@ -58,10 +58,10 @@
 //!
 //! // Link with symbol table (validated at link time)
 //! let mut table = SymTable::new();
-//! table.add_const("x", num!(10)).unwrap();
-//! table.add_const("y", num!(5)).unwrap();
+//! table.add_const("x", num!(10), false).unwrap();
+//! table.add_const("y", num!(5), false).unwrap();
 //!
-//! let linked = program.link(table).unwrap();
+//! let mut linked = program.link(table).unwrap();
 //!
 //! // Execute
 //! let result = linked.execute().unwrap();
@@ -132,7 +132,7 @@ pub fn eval(expression: &str) -> Result<Number, String> {
 /// use expr_solver::{num, eval_with_table, SymTable};
 ///
 /// let mut table = SymTable::stdlib();
-/// table.add_const("x", num!(42)).unwrap();
+/// table.add_const("x", num!(42), false).unwrap();
 ///
 /// let result = eval_with_table("x * 2", table).unwrap();
 /// assert_eq!(result.to_string(), "84");
@@ -172,6 +172,6 @@ pub fn eval_file(path: impl AsRef<str>) -> Result<Number, String> {
 #[cfg(feature = "serialization")]
 pub fn eval_file_with_table(path: impl AsRef<str>, table: SymTable) -> Result<Number, String> {
     let program = Program::new_from_file(path.as_ref()).map_err(|err| err.to_string())?;
-    let linked = program.link(table).map_err(|err| err.to_string())?;
+    let mut linked = program.link(table).map_err(|err| err.to_string())?;
     linked.execute().map_err(|err| err.to_string())
 }

@@ -38,7 +38,7 @@ pub enum VmError {
 #[derive(Debug)]
 pub struct Vm<'vm> {
     bytecode: &'vm [Instr],
-    symtable: &'vm SymTable,
+    symtable: &'vm mut SymTable,
     stack: Vec<Number>,
     ip: usize,
 }
@@ -55,7 +55,7 @@ impl<'vm> Vm<'vm> {
     /// - Function errors
     /// - Invalid symbol indices
     /// - Invalid jumps
-    pub fn run(bytecode: &'vm [Instr], symtable: &'vm SymTable) -> Result<Number, VmError> {
+    pub fn run(bytecode: &'vm [Instr], symtable: &'vm mut SymTable) -> Result<Number, VmError> {
         use crate::number::consts;
 
         if bytecode.is_empty() {
@@ -109,6 +109,16 @@ impl<'vm> Vm<'vm> {
                         _ => unreachable!(),
                     }
                 }
+                Instr::Store(idx) => {
+                    let top = self.pop()?;
+                    let sym = self.symtable.get_mut_by_index(*idx).unwrap();
+                    match sym {
+                        Symbol::Const { value, .. } => {
+                            *value = top;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
                 Instr::Neg => {
                     let v = self.pop()?;
                     self.stack.push(-v);
@@ -119,10 +129,7 @@ impl<'vm> Vm<'vm> {
                 Instr::Div => self.div_op()?,
                 Instr::Pow => self.pow_op()?,
                 Instr::Fact => self.fact_op()?,
-                Instr::Call(idx, argc) => {
-                    let sym = self.symtable.get_by_index(*idx).unwrap();
-                    self.call_op(sym, *argc)?;
-                }
+                Instr::Call(idx, argc) => self.call_op(*idx, *argc)?,
                 Instr::Equal => self.comparison_op(|a, b| a == b)?,
                 Instr::NotEqual => self.comparison_op(|a, b| a != b)?,
                 Instr::Less => self.comparison_op(|a, b| a < b)?,
@@ -341,8 +348,8 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    fn call_op(&mut self, sym: &Symbol, argc: usize) -> Result<(), VmError> {
-        match sym {
+    fn call_op(&mut self, idx: usize, argc: usize) -> Result<(), VmError> {
+        match self.symtable.get_by_index(idx).unwrap() {
             Symbol::Func { callback, .. } => {
                 let args_start = self.stack.len() - argc;
                 let args = &self.stack[args_start..];
@@ -368,32 +375,32 @@ mod tests {
 
     #[test]
     fn test_vm_error_stack_underflow() {
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
         let bytecode = vec![Instr::Add]; // No values on stack
 
-        let result = Vm::run(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(result, Err(VmError::StackUnderflow)));
     }
 
     #[test]
     fn test_vm_error_division_by_zero() {
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
         let bytecode = vec![Instr::Push(num!(5)), Instr::Push(num!(0)), Instr::Div];
 
-        let result = Vm::run(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(result, Err(VmError::DivisionByZero)));
     }
 
     #[test]
     fn test_vm_error_invalid_final_stack() {
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
         let bytecode = vec![
             Instr::Push(num!(1)),
             Instr::Push(num!(2)),
             // No operation to combine them
         ];
 
-        let result = Vm::run(&bytecode, &table);
+        let result = Vm::run(&bytecode, &mut table);
         assert!(matches!(
             result,
             Err(VmError::InvalidFinalStack { count: 2 })
@@ -415,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_binary_operations() {
-        let table = SymTable::stdlib();
+        let mut table = SymTable::stdlib();
 
         // Test all binary operations using string comparison
         let test_cases = vec![
@@ -434,7 +441,7 @@ mod tests {
         ];
 
         for (code, expected) in test_cases {
-            let result = Vm::run(&code, &table).unwrap();
+            let result = Vm::run(&code, &mut table).unwrap();
             assert_eq!(result.to_string(), expected);
         }
     }
