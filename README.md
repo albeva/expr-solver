@@ -170,9 +170,9 @@ The library supports two numeric backends:
 | Category       | Functions                                                                 |
 |----------------|---------------------------------------------------------------------------|
 | **Arithmetic** | `abs`, `sign`, `floor`, `ceil`, `round`, `trunc`, `fract`, `mod`, `clamp` |
-| **Trig**       | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`                     |
+| **Trig**       | `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2`                      |
 | **Hyperbolic** | `sinh`, `cosh`, `tanh`                                                    |
-| **Exp/Log**    | `sqrt`, `cbrt`, `pow`, `exp`, `exp2`, `log`, `log2`, `log10`, `hypot`    |
+| **Exp/Log**    | `sqrt`, `cbrt`, `pow`, `exp`, `exp2`, `log`, `log2`, `log10`, `hypot`     |
 | **Variadic**   | `min`, `max`, `sum`, `avg` (1+ args)                                      |
 | **Special**    | `if(cond, then, else)`                                                    |
 
