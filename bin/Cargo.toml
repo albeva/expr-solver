@@ -15,5 +15,5 @@ name = "expr-solver"
 path = "src/main.rs"
 
 [dependencies]
-expr-solver-lib = { version = "1.2.0", path = "../lib", default-features = false, features = ["decimal-precision", "serialization", "printing"] }
+expr-solver-lib = { version = "1.2.0", path = "../lib", features = ["decimal", "serialization", "printing"] }
 clap = { version = "4.0", features = ["derive"] }

@@ -247,6 +247,90 @@ impl<'p, S> Print<'p, S> {
         let op_styled = self.style.operator(op);
         stack.push(format!("{}{}{}", left, op_styled, right));
     }
+
+    /// Core assembly formatting logic shared between Compiled and Linked.
+    fn format_assembly<F>(
+        &self,
+        bytecode: &[Instr],
+        version: &str,
+        get_symbol_name: &F,
+    ) -> String
+    where
+        F: Fn(usize) -> String,
+    {
+        let mut out = String::new();
+
+        // Version comment
+        let comment = self.style.comment(&format!("; VERSION {}\n", version));
+        out.push_str(&comment.to_string());
+
+        // Instructions
+        for (i, instr) in bytecode.iter().enumerate() {
+            let addr = self.style.asm_address(&format!("{:04X} ", i));
+            let _ = write!(out, "{}", addr);
+
+            let line = self.format_instruction(instr, get_symbol_name);
+            let _ = writeln!(out, "{}", line);
+        }
+
+        out
+    }
+
+    fn format_instruction<F>(&self, instr: &Instr, get_symbol_name: &F) -> String
+    where
+        F: Fn(usize) -> String,
+    {
+        match instr {
+            Instr::Push(v) => {
+                let instr = self.style.keyword("PUSH");
+                let value = self.style.number(&v.to_string());
+                format!("{} {}", instr, value)
+            }
+            Instr::Load(idx) => {
+                let instr = self.style.keyword("LOAD");
+                let sym_name = get_symbol_name(*idx);
+                let sym = self.style.global_symbol(&sym_name);
+                format!("{} {}", instr, sym)
+            }
+            Instr::Store(idx) => {
+                let instr = self.style.keyword("STORE");
+                let sym_name = get_symbol_name(*idx);
+                let sym = self.style.local_symbol(&sym_name);
+                format!("{} {}", instr, sym)
+            }
+            Instr::Neg => self.style.keyword("NEG").to_string(),
+            Instr::Add => self.style.keyword("ADD").to_string(),
+            Instr::Sub => self.style.keyword("SUB").to_string(),
+            Instr::Mul => self.style.keyword("MUL").to_string(),
+            Instr::Div => self.style.keyword("DIV").to_string(),
+            Instr::Pow => self.style.keyword("POW").to_string(),
+            Instr::Fact => self.style.keyword("FACT").to_string(),
+            Instr::Call(idx, argc) => {
+                let instr = self.style.keyword("CALL");
+                let sym_name = get_symbol_name(*idx);
+                let func = self.style.function(&sym_name);
+                let args_label = self.style.comment("args:");
+                let args_count = self.style.number(&argc.to_string());
+                format!("{} {} {} {}", instr, func, args_label, args_count)
+            }
+            Instr::Equal => self.style.keyword("EQ").to_string(),
+            Instr::NotEqual => self.style.keyword("NEQ").to_string(),
+            Instr::Less => self.style.keyword("LT").to_string(),
+            Instr::LessEqual => self.style.keyword("LTE").to_string(),
+            Instr::Greater => self.style.keyword("GT").to_string(),
+            Instr::GreaterEqual => self.style.keyword("GTE").to_string(),
+            Instr::Jmp(target) => {
+                let instr = self.style.keyword("JMP");
+                let addr = self.style.asm_address(&format!("{:04X}", target));
+                format!("{} {}", instr, addr)
+            }
+            Instr::Jz(target) => {
+                let instr = self.style.keyword("JZ");
+                let addr = self.style.asm_address(&format!("{:04X}", target));
+                format!("{} {}", instr, addr)
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -267,6 +351,15 @@ impl<'p> Print<'p, Compiled> {
             &|idx| symbols[idx].local,
         );
         expr
+    }
+
+    /// Returns the pretty-printed assembly as a string.
+    pub fn assembly(&self) -> String {
+        let bytecode = self.program.bytecode();
+        let symbols = self.program.symbols();
+        let version = self.program.version();
+
+        self.format_assembly(bytecode, version, &|idx| symbols[idx].name.to_string())
     }
 }
 
@@ -297,24 +390,12 @@ impl<'p> Print<'p, Linked> {
 
     /// Returns the pretty-printed assembly as a string.
     pub fn assembly(&self) -> String {
-        let mut out = String::new();
+        let bytecode = self.program.bytecode();
+        let version = self.program.version();
 
-        // Version comment
-        let comment = self
-            .style
-            .comment(&format!("; VERSION {}\n", self.program.version()));
-        out.push_str(&comment.to_string());
-
-        // Instructions
-        for (i, instr) in self.program.bytecode().iter().enumerate() {
-            let addr = self.style.asm_address(&format!("{:04X} ", i));
-            let _ = write!(out, "{}", addr);
-
-            let line = self.format_instruction(instr);
-            let _ = writeln!(out, "{}", line);
-        }
-
-        out
+        self.format_assembly(bytecode, version, &|idx| {
+            self.get_symbol_name(idx).to_string()
+        })
     }
 
     fn get_symbol_name(&self, idx: usize) -> &str {
@@ -333,59 +414,6 @@ impl<'p> Print<'p, Linked> {
             }
         } else {
             false
-        }
-    }
-
-    fn format_instruction(&self, instr: &Instr) -> String {
-        match instr {
-            Instr::Push(v) => {
-                let instr = self.style.keyword("PUSH");
-                let value = self.style.number(&v.to_string());
-                format!("{} {}", instr, value)
-            }
-            Instr::Load(idx) => {
-                let instr = self.style.keyword("LOAD");
-                let sym_name = self.get_symbol_name(*idx);
-                let sym = self.style.global_symbol(sym_name);
-                format!("{} {}", instr, sym)
-            }
-            Instr::Store(idx) => {
-                let instr = self.style.keyword("STORE");
-                let sym_name = self.get_symbol_name(*idx);
-                let sym = self.style.local_symbol(sym_name);
-                format!("{} {}", instr, sym)
-            }
-            Instr::Neg => self.style.keyword("NEG").to_string(),
-            Instr::Add => self.style.keyword("ADD").to_string(),
-            Instr::Sub => self.style.keyword("SUB").to_string(),
-            Instr::Mul => self.style.keyword("MUL").to_string(),
-            Instr::Div => self.style.keyword("DIV").to_string(),
-            Instr::Pow => self.style.keyword("POW").to_string(),
-            Instr::Fact => self.style.keyword("FACT").to_string(),
-            Instr::Call(idx, argc) => {
-                let instr = self.style.keyword("CALL");
-                let sym_name = self.get_symbol_name(*idx);
-                let func = self.style.function(sym_name);
-                let args_label = self.style.comment("args:");
-                let args_count = self.style.number(&argc.to_string());
-                format!("{} {} {} {}", instr, func, args_label, args_count)
-            }
-            Instr::Equal => self.style.keyword("EQ").to_string(),
-            Instr::NotEqual => self.style.keyword("NEQ").to_string(),
-            Instr::Less => self.style.keyword("LT").to_string(),
-            Instr::LessEqual => self.style.keyword("LTE").to_string(),
-            Instr::Greater => self.style.keyword("GT").to_string(),
-            Instr::GreaterEqual => self.style.keyword("GTE").to_string(),
-            Instr::Jmp(target) => {
-                let instr = self.style.keyword("JMP");
-                let addr = self.style.asm_address(&format!("{:04X}", target));
-                format!("{} {}", instr, addr)
-            }
-            Instr::Jz(target) => {
-                let instr = self.style.keyword("JZ");
-                let addr = self.style.asm_address(&format!("{:04X}", target));
-                format!("{} {}", instr, addr)
-            }
         }
     }
 }

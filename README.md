@@ -51,37 +51,45 @@ expr-solver-lib = "1.2.0"
 
 **Numeric Type Selection:**
 
-The library supports two numeric backends via feature flags (mutually exclusive):
+The library supports two numeric backends:
 
-- **`f64-floats`** (default) - Standard f64 floating-point arithmetic. Faster and simpler, allows Inf and NaN results.
-- **`decimal-precision`** - 128-bit Decimal for high precision. No floating-point errors, checked arithmetic with overflow detection.
+- **f64** (default) - Standard f64 floating-point arithmetic. Faster and simpler, allows Inf and NaN results.
+- **Decimal** (`decimal` feature) - 128-bit Decimal for high precision. No floating-point errors, checked arithmetic with overflow detection.
+
+Basic usage (f64 backend):
+
+```toml
+[dependencies]
+expr-solver-lib = "1.2.0"
+```
 
 To use high-precision Decimal:
 
 ```toml
 [dependencies]
-expr-solver-lib = { version = "1.2.0", default-features = false, features = ["decimal-precision"] }
+expr-solver-lib = { version = "1.2.0", features = ["decimal"] }
 ```
 
-To enable bytecode serialization with f64:
+To enable bytecode serialization:
 
 ```toml
 [dependencies]
+# With f64 (default)
 expr-solver-lib = { version = "1.2.0", features = ["serialization"] }
-```
 
-To enable bytecode serialization with Decimal:
-
-```toml
-[dependencies]
-expr-solver-lib = { version = "1.2.0", default-features = false, features = ["decimal-precision", "serialization"] }
+# With Decimal
+expr-solver-lib = { version = "1.2.0", features = ["decimal", "serialization"] }
 ```
 
 **Optional Features:**
 
-- **`printing`** (enabled by default) - Pretty printing and syntax highlighting. Disable to reduce dependencies:
+- **`decimal`** - Use 128-bit Decimal instead of f64 for numeric computations
+- **`serialization`** - Enable bytecode serialization/deserialization
+- **`printing`** (enabled by default) - Pretty printing and syntax highlighting
+
+To disable printing and minimize dependencies:
   ```toml
-  expr-solver-lib = { version = "1.2.0", default-features = false, features = ["f64-floats"] }
+  expr-solver-lib = { version = "1.2.0", default-features = false }
   ```
 
 ### As a Command-Line Tool
@@ -185,7 +193,7 @@ The library supports two numeric backends:
 | **Variadic**   | `min`, `max`, `sum`, `avg` (1+ args)                                      |
 | **Special**    | `if(cond, then, else)`                                                    |
 
-> **Note:** In `decimal-precision` mode, some operations (inverse trig, `pow`) use internal f64 conversion due to `rust_decimal` limitations, which may introduce small precision loss.
+> **Note:** In `decimal` mode, some operations (inverse trig, `pow`) use internal f64 conversion due to `rust_decimal` limitations, which may introduce small precision loss.
 
 ## Built-in Constants
 
@@ -254,15 +262,17 @@ expr-solver -t
 Run the test suite:
 
 ```bash
-# Run all tests with default f64 mode
-cargo test
+# Test library with f64 backend (default)
+cargo test -p expr-solver-lib
 
-# Test with decimal-precision mode
-cargo test -p expr-solver-lib --no-default-features --features decimal-precision
+# Test library with Decimal backend
+cargo test -p expr-solver-lib --features decimal
 
-# Test binary with f64 mode
+# Test binary (uses Decimal precision)
 cargo test -p expr-solver-bin
 ```
+
+**Note:** Test packages individually using `-p` flag to avoid workspace feature unification issues.
 
 ## License
 

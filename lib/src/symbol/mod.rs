@@ -13,9 +13,9 @@ use std::borrow::Cow;
 use thiserror::Error;
 
 // Type-specific implementations
-#[cfg(feature = "decimal-precision")]
+#[cfg(feature = "decimal")]
 mod decimal;
-#[cfg(feature = "f64-floats")]
+#[cfg(not(feature = "decimal"))]
 mod f64;
 
 /// Errors that can occur during function evaluation.

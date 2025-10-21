@@ -18,12 +18,12 @@ fn eval_with_custom_table_ok(expr: &str, table: SymTable) -> Number {
 }
 
 // Helper function for approximate equality (for f64 mode)
-#[cfg(feature = "f64-floats")]
+#[cfg(not(feature = "decimal"))]
 fn approx_eq(a: Number, b: Number, epsilon: f64) -> bool {
     (a - b).abs() < epsilon
 }
 
-#[cfg(feature = "decimal-precision")]
+#[cfg(feature = "decimal")]
 fn approx_eq(a: Number, b: Number, epsilon: Number) -> bool {
     (a - b).abs() < epsilon
 }
@@ -235,9 +235,9 @@ fn test_runtime_errors() {
         "Invalid factorial: 1.5 (must be a non-negative integer)"
     );
 
-    // In decimal-precision mode, domain errors are caught
-    // In f64-floats mode, these operations return NaN (which is acceptable)
-    #[cfg(feature = "decimal-precision")]
+    // In decimal mode, domain errors are caught
+    // In decimal mode, these operations return NaN (which is acceptable)
+    #[cfg(feature = "decimal")]
     {
         assert_eq!(
             eval_err("log(-1)"),
@@ -249,7 +249,7 @@ fn test_runtime_errors() {
         );
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     {
         // These return NaN in f64 mode
         let result = eval_ok("log(-1)");

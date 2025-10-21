@@ -7,7 +7,7 @@
 use super::Symbol;
 use crate::symtable::SymTable;
 
-#[cfg(feature = "f64-floats")]
+#[cfg(not(feature = "decimal"))]
 impl SymTable {
     /// Creates a symbol table with the standard library for f64 precision.
     ///

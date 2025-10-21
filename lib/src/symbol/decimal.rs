@@ -74,7 +74,7 @@ fn cbrt_decimal(x: Decimal) -> Decimal {
     guess * sign
 }
 
-#[cfg(feature = "decimal-precision")]
+#[cfg(feature = "decimal")]
 impl SymTable {
     /// Creates a symbol table with the standard library for Decimal precision.
     ///

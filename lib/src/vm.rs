@@ -161,7 +161,7 @@ impl<'vm> Vm<'vm> {
     }
 
     // Decimal mode: use checked arithmetic for safety
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn add_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -174,8 +174,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    // f64 mode: use simple arithmetic (Inf/NaN allowed)
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn add_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -183,7 +182,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn sub_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -196,7 +195,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn sub_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -204,7 +203,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn mul_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -217,7 +216,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn mul_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -225,7 +224,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn div_op(&mut self) -> Result<(), VmError> {
         use crate::number::consts;
 
@@ -244,7 +243,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn div_op(&mut self) -> Result<(), VmError> {
         let right = self.pop()?;
         let left = self.pop()?;
@@ -256,7 +255,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn pow_op(&mut self) -> Result<(), VmError> {
         use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 
@@ -285,7 +284,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn pow_op(&mut self) -> Result<(), VmError> {
         let exponent = self.pop()?;
         let base = self.pop()?;
@@ -293,7 +292,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "decimal-precision")]
+    #[cfg(feature = "decimal")]
     fn fact_op(&mut self) -> Result<(), VmError> {
         use crate::number::consts;
         use rust_decimal::prelude::*;
@@ -323,7 +322,7 @@ impl<'vm> Vm<'vm> {
         Ok(())
     }
 
-    #[cfg(feature = "f64-floats")]
+    #[cfg(not(feature = "decimal"))]
     fn fact_op(&mut self) -> Result<(), VmError> {
         let n = self.pop()?;
 

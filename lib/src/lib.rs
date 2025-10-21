@@ -16,15 +16,20 @@
 //!
 //! ## Numeric Type Selection
 //!
-//! The library supports two numeric backends via feature flags:
+//! The library supports two numeric backends:
 //!
-//! - **`f64-floats`** (default) - Standard f64 floating-point arithmetic. Faster and simpler,
+//! - **f64** (default) - Standard f64 floating-point arithmetic. Faster and simpler,
 //!   suitable for most use cases. Allows Inf and NaN results.
-//! - **`decimal-precision`** - 128-bit Decimal arithmetic for high precision. No floating-point
+//! - **Decimal** (`decimal` feature) - 128-bit Decimal arithmetic for high precision. No floating-point
 //!   errors, checked arithmetic with overflow detection. Use for financial calculations or when
 //!   exact decimal representation is required.
 //!
-//! **Note**: Only one numeric backend can be enabled at a time.
+//! Enable the `decimal` feature to use Decimal instead of f64:
+//!
+//! ```toml
+//! [dependencies]
+//! expr-solver-lib = { version = "1.2.0", features = ["decimal"] }
+//! ```
 //!
 //! # Quick Start
 //!

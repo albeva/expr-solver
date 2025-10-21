@@ -14,9 +14,8 @@ categories = ["mathematics", "parser-implementations"]
 name = "expr_solver"
 
 [features]
-default = ["f64-floats", "printing"]
-f64-floats = []
-decimal-precision = ["dep:rust_decimal", "dep:rust_decimal_macros"]
+default = ["printing"]
+decimal = ["dep:rust_decimal", "dep:rust_decimal_macros"]
 serialization = ["dep:serde", "dep:bincode"]
 printing = []
 

@@ -206,6 +206,11 @@ impl<'src> Program<'src, Compiled> {
         &self.state.symbols
     }
 
+    /// Returns the program version.
+    pub fn version(&self) -> &str {
+        &self.state.version
+    }
+
     /// Returns a syntax-highlighted string representation of the expression.
     ///
     /// This is a convenience method that delegates to [`Print`].
@@ -223,6 +228,15 @@ impl<'src> Program<'src, Compiled> {
     #[cfg(feature = "printing")]
     pub fn get_string(&self) -> String {
         crate::print::Print::new(self).to_string()
+    }
+
+    /// Returns a human-readable assembly representation of the program.
+    ///
+    /// This is a convenience method that delegates to [`Print::assembly()`].
+    /// For custom styling, use [`Print::with_style()`] instead.
+    #[cfg(feature = "printing")]
+    pub fn get_assembly(&self) -> String {
+        crate::print::Print::new(self).assembly()
     }
 
     // ========================================================================
