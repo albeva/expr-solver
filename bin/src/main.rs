@@ -63,16 +63,18 @@ fn run() -> Result<(), String> {
     // Create symbol table with custom constants
     let table = create_symbol_table(&args.define)?;
 
+    // Handle --symbol-table (no program needed)
+    if args.symbol_table {
+        list_symbol_table(&table);
+        return Ok(());
+    }
+
     // Load input from either expression or file
     let program = if let Some(expr) = args.expression.as_ref().or(args.expr.as_ref()) {
         Program::new_from_source(expr).map_err(|err| err.to_string())?
     } else if let Some(file) = &args.input {
         Program::new_from_file(file.to_string_lossy().as_ref()).map_err(|err| err.to_string())?
     } else {
-        if args.symbol_table {
-            list_symbol_table(&table);
-            return Ok(());
-        }
         return Err("no input".to_string());
     };
 
@@ -80,11 +82,9 @@ fn run() -> Result<(), String> {
     #[allow(unused_mut)] // Mut needed for execute(), but not for assembly printing
     let mut program = program.link(table).map_err(|err| err.to_string())?;
 
+    // Act on the loaded program
     if args.print {
         println!("{}", program.get_string());
-        return Ok(());
-    } else if args.symbol_table {
-        list_symbol_table(program.symtable());
     } else if args.assembly {
         print!("{}", program.get_assembly());
     } else if let Some(output_path) = &args.output {

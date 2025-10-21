@@ -47,37 +47,21 @@ impl<'p, S> Print<'p, S> {
     pub fn with_style(program: &'p Program<'p, S>, style: ExprStyle) -> Self {
         Self { program, style }
     }
-}
 
-// ============================================================================
-// Expression printing (for Compiled programs)
-// ============================================================================
-
-impl<'p> Print<'p, Compiled> {
-    /// Returns the pretty-printed expression as a string.
-    ///
-    /// Decompiles bytecode into an idealized pretty-printed expression.
-    fn get_expr(&self) -> String {
-        self.decompile_bytecode()
-    }
-
-    /// Decompiles bytecode back to an expression string.
-    fn decompile_bytecode(&self) -> String {
-        let bytecode = self.program.bytecode();
-        let symbols = self.program.symbols();
-        let (expr, _) = self.decompile_region(bytecode, symbols, 0, bytecode.len());
-        expr
-    }
-
-    /// Recursively decompiles a region of bytecode.
-    /// Returns (expression_string, declarations_list)
-    fn decompile_region(
+    /// Core decompilation logic shared between Compiled and Linked.
+    /// Takes closures to access symbol name and local flag.
+    fn decompile_region<F, G>(
         &self,
         bytecode: &[Instr],
-        symbols: &[crate::metadata::SymbolMetadata],
         start: usize,
         end: usize,
-    ) -> (String, Vec<String>) {
+        get_symbol_name: &F,
+        is_local: &G,
+    ) -> (String, Vec<String>)
+    where
+        F: Fn(usize) -> String,
+        G: Fn(usize) -> bool,
+    {
         let mut stack: Vec<String> = Vec::new();
         let mut declarations: Vec<String> = Vec::new();
         let mut ip = start;
@@ -91,20 +75,19 @@ impl<'p> Print<'p, Compiled> {
                     ip += 1;
                 }
                 Instr::Load(idx) => {
-                    let meta = &symbols[*idx];
-                    let styled = if meta.local {
-                        self.style.local_symbol(&meta.name)
+                    let sym_name = get_symbol_name(*idx);
+                    let styled = if is_local(*idx) {
+                        self.style.local_symbol(&sym_name)
                     } else {
-                        self.style.global_symbol(&meta.name)
+                        self.style.global_symbol(&sym_name)
                     };
                     stack.push(styled.to_string());
                     ip += 1;
                 }
                 Instr::Store(idx) => {
-                    // This is for LET declarations
                     let value = stack.pop().unwrap();
-                    let meta = &symbols[*idx];
-                    let name = self.style.local_symbol(&meta.name);
+                    let sym_name = get_symbol_name(*idx);
+                    let name = self.style.local_symbol(&sym_name);
                     let eq = self.style.operator(" = ");
                     declarations.push(format!("{}{}{}", name, eq, value));
                     ip += 1;
@@ -166,8 +149,8 @@ impl<'p> Print<'p, Compiled> {
                     ip += 1;
                 }
                 Instr::Call(idx, argc) => {
-                    let meta = &symbols[*idx];
-                    let func_name = self.style.function(&meta.name);
+                    let sym_name = get_symbol_name(*idx);
+                    let func_name = self.style.function(&sym_name);
                     let args: Vec<_> = (0..*argc)
                         .map(|_| stack.pop().unwrap())
                         .collect::<Vec<_>>()
@@ -203,12 +186,18 @@ impl<'p> Print<'p, Compiled> {
                         continue;
                     };
 
-                    // Recursively decompile then-branch (ip+1 to jmp_pos)
-                    let (then_expr, _) = self.decompile_region(bytecode, symbols, ip + 1, jmp_pos);
+                    // Recursively decompile then-branch
+                    let (then_expr, _) =
+                        self.decompile_region(bytecode, ip + 1, jmp_pos, get_symbol_name, is_local);
 
-                    // Recursively decompile else-branch (else_target to end_target)
-                    let (else_expr, _) =
-                        self.decompile_region(bytecode, symbols, *else_target, end_target);
+                    // Recursively decompile else-branch
+                    let (else_expr, _) = self.decompile_region(
+                        bytecode,
+                        *else_target,
+                        end_target,
+                        get_symbol_name,
+                        is_local,
+                    );
 
                     // Construct if(...) expression
                     let if_kw = self.style.keyword("if");
@@ -225,8 +214,7 @@ impl<'p> Print<'p, Compiled> {
                     ip = end_target;
                 }
                 Instr::Jmp(_) => {
-                    // JMP without preceding JZ shouldn't happen in well-formed code
-                    // This is part of an IF expression, so we should have already handled it
+                    // Part of IF expression, already handled
                     ip += 1;
                 }
             }
@@ -261,6 +249,27 @@ impl<'p> Print<'p, Compiled> {
     }
 }
 
+// ============================================================================
+// Expression printing for Compiled programs
+// ============================================================================
+
+impl<'p> Print<'p, Compiled> {
+    /// Returns the pretty-printed expression as a string.
+    fn get_expr(&self) -> String {
+        let bytecode = self.program.bytecode();
+        let symbols = self.program.symbols();
+
+        let (expr, _) = self.decompile_region(
+            bytecode,
+            0,
+            bytecode.len(),
+            &|idx| symbols[idx].name.to_string(),
+            &|idx| symbols[idx].local,
+        );
+        expr
+    }
+}
+
 impl<'p> fmt::Display for Print<'p, Compiled> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.get_expr())
@@ -268,10 +277,24 @@ impl<'p> fmt::Display for Print<'p, Compiled> {
 }
 
 // ============================================================================
-// Assembly printing (for Linked programs)
+// Expression and assembly printing for Linked programs
 // ============================================================================
 
 impl<'p> Print<'p, Linked> {
+    /// Returns the pretty-printed expression.
+    pub fn get_expr(&self) -> String {
+        let bytecode = self.program.bytecode();
+
+        let (expr, _) = self.decompile_region(
+            bytecode,
+            0,
+            bytecode.len(),
+            &|idx| self.get_symbol_name(idx).to_string(),
+            &|idx| self.is_local_symbol(idx),
+        );
+        expr
+    }
+
     /// Returns the pretty-printed assembly as a string.
     pub fn assembly(&self) -> String {
         let mut out = String::new();
@@ -294,15 +317,23 @@ impl<'p> Print<'p, Linked> {
         out
     }
 
-    /// Returns the pretty-printed expression for a linked program.
-    ///
-    /// Note: Linked programs don't have source, so this will show a placeholder.
-    pub fn get_expr(&self) -> String {
-        // For linked programs, we don't have access to the original expression
-        // since the bytecode has already been linked with the symbol table
-        self.style
-            .comment("(expression not available for linked programs)")
-            .to_string()
+    fn get_symbol_name(&self, idx: usize) -> &str {
+        self.program
+            .symtable()
+            .get_by_index(idx)
+            .map(|s| s.name())
+            .expect("Symbol not found")
+    }
+
+    fn is_local_symbol(&self, idx: usize) -> bool {
+        if let Ok(symbol) = self.program.symtable().get_by_index(idx) {
+            match symbol {
+                crate::symbol::Symbol::Const { local, .. } => *local,
+                crate::symbol::Symbol::Func { local, .. } => *local,
+            }
+        } else {
+            false
+        }
     }
 
     fn format_instruction(&self, instr: &Instr) -> String {
@@ -356,14 +387,6 @@ impl<'p> Print<'p, Linked> {
                 format!("{} {}", instr, addr)
             }
         }
-    }
-
-    fn get_symbol_name(&self, idx: usize) -> &str {
-        self.program
-            .symtable()
-            .get_by_index(idx)
-            .map(|s| s.name())
-            .expect("Symbol not found in assembly")
     }
 }
 
