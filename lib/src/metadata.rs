@@ -56,6 +56,11 @@ impl From<&Symbol> for SymbolKind {
                 arity: *args,
                 variadic: *variadic,
             },
+            Symbol::LocalFunc { params, offset, .. } => SymbolKind::LocalFunc {
+                arity: params.len(),
+                params: params.clone(),
+                offset: *offset,
+            },
         }
     }
 }

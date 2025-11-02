@@ -418,10 +418,7 @@ impl<'p> Print<'p, Linked> {
 
     fn is_local_symbol(&self, idx: usize) -> bool {
         if let Ok(symbol) = self.program.symtable().get_by_index(idx) {
-            match symbol {
-                crate::symbol::Symbol::Const { local, .. } => *local,
-                crate::symbol::Symbol::Func { local, .. } => *local,
-            }
+            symbol.is_local()
         } else {
             false
         }

@@ -152,7 +152,7 @@ fn test_custom_symbols() {
     let mut table = SymTable::stdlib();
     table.add_const("my_const", num!(123), false).unwrap();
     table
-        .add_func("add_one", 1, false, |args| Ok(args[0] + num!(1)), false, None)
+        .add_func("add_one", 1, false, |args| Ok(args[0] + num!(1)))
         .unwrap();
 
     assert_eq!(
@@ -170,7 +170,7 @@ fn test_emoji_identifiers() {
     let mut table = SymTable::stdlib();
     table.add_const("x😀", num!(10), false).unwrap();
     table
-        .add_func("add🚀", 2, false, |args| Ok(args[0] + args[1]), false, None)
+        .add_func("add🚀", 2, false, |args| Ok(args[0] + args[1]))
         .unwrap();
 
     assert_eq!(

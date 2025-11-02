@@ -77,8 +77,6 @@ impl SymTable {
         args: usize,
         variadic: bool,
         callback: fn(&[Number]) -> Result<Number, FuncError>,
-        local: bool,
-        offset: Option<usize>,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
         if self.get_by_name(&name).is_ok() {
@@ -90,8 +88,31 @@ impl SymTable {
             variadic,
             callback,
             description: None,
-            local,
-            offset
+        });
+        Ok(self)
+    }
+
+    /// Adds a local function to the table.
+    ///
+    /// # Parameters
+    /// - `name`: Function name
+    /// - `params`: Minimum number of arguments
+    ///
+    /// Returns an error if a symbol with the same name already exists.
+    pub fn add_local_func<S: Into<Cow<'static, str>>>(
+        &mut self,
+        name: S,
+        params: Vec<Cow<'static, str>>,
+        offset: usize,
+    ) -> Result<&mut Self, SymbolError> {
+        let name = name.into();
+        if self.get_by_name(&name).is_ok() {
+            return Err(SymbolError::DuplicateSymbol(name.to_string()));
+        }
+        self.symbols.push(Symbol::LocalFunc {
+            name,
+            params,
+            offset,
         });
         Ok(self)
     }

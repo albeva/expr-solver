@@ -67,10 +67,12 @@ pub enum Symbol {
         variadic: bool,
         callback: fn(&[Number]) -> Result<Number, FuncError>,
         description: Option<Cow<'static, str>>,
-        /// Whether this is a local function (reserved for future use) or global (from stdlib)
-        local: bool,
-        /// Func offset (local only)
-        offset: Option<usize>,
+    },
+    /// Local function
+    LocalFunc {
+        name: Cow<'static, str>,
+        params: Vec<Cow<'static, str>>,
+        offset: usize,
     },
 }
 
@@ -80,6 +82,7 @@ impl Symbol {
         match self {
             Symbol::Const { name, .. } => name,
             Symbol::Func { name, .. } => name,
+            Symbol::LocalFunc { name, .. } => name,
         }
     }
 
@@ -88,6 +91,7 @@ impl Symbol {
         match self {
             Symbol::Const { description, .. } => description.as_deref(),
             Symbol::Func { description, .. } => description.as_deref(),
+            Symbol::LocalFunc { .. } => None,
         }
     }
 
@@ -95,7 +99,8 @@ impl Symbol {
     pub fn is_local(&self) -> bool {
         match self {
             Symbol::Const { local, .. } => *local,
-            Symbol::Func { local, .. } => *local,
+            Symbol::Func { .. } => false,
+            Symbol::LocalFunc { .. } => true,
         }
     }
 }

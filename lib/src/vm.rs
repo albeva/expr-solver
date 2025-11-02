@@ -364,6 +364,7 @@ impl<'vm> Vm<'vm> {
                 Ok(())
             }
             Symbol::Const { .. } => unreachable!(),
+            Symbol::LocalFunc { .. } => unimplemented!(),
         }
     }
 

@@ -73,10 +73,23 @@ impl Linker {
     fn resolve_symbols(&mut self) -> Result<(), LinkerError> {
         for metadata in &mut self.symbols {
             let resolved_idx = if metadata.local {
-                // Add local symbol to the symbol table
                 let idx = self.symtable.symbols().count();
-                self.symtable
-                    .add_const(metadata.name.to_string(), num!(0), true)?;
+                match &metadata.kind {
+                    SymbolKind::Const => {
+                        self.symtable
+                            .add_const(metadata.name.to_string(), num!(0), true)?;
+                    }
+                    SymbolKind::LocalFunc { offset, params, .. } => {
+                        self.symtable.add_local_func(
+                            metadata.name.to_string(),
+                            params.clone(),
+                            *offset,
+                        )?;
+                    }
+                    _ => {
+                        unreachable!()
+                    }
+                };
                 idx
             } else {
                 // Resolve external symbol
@@ -110,42 +123,23 @@ impl Linker {
         match (&metadata.kind, symbol) {
             (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
             (
-                SymbolKind::GlobalFunc { arity, .. } | SymbolKind::LocalFunc { arity, .. },
+                SymbolKind::GlobalFunc { arity, .. },
                 Symbol::Func {
                     args: min_args,
                     variadic,
                     ..
                 },
-            ) => {
-                // Check if the call is valid:
-                // - For non-variadic: arity must match exactly
-                // - For variadic: arity must be >= min_args
-                let valid = if *variadic {
-                    arity >= min_args
-                } else {
-                    arity == min_args
-                };
-
-                if valid {
-                    Ok(())
-                } else {
-                    let expected_msg = if *variadic {
-                        format!("at least {} arguments", min_args)
-                    } else {
-                        format!("exactly {} arguments", min_args)
-                    };
-                    Err(LinkerError::TypeMismatch {
-                        name: metadata.name.to_string(),
-                        expected: expected_msg,
-                        found: format!("{} arguments provided", arity),
-                    })
-                }
+            ) => Self::valildate_args(&metadata, *arity, *min_args, *variadic),
+            (SymbolKind::LocalFunc { arity, .. }, Symbol::LocalFunc { params, .. }) => {
+                Self::valildate_args(&metadata, *arity, params.len(), false)
             }
-            (SymbolKind::Const, Symbol::Func { .. }) => Err(LinkerError::TypeMismatch {
-                name: metadata.name.to_string(),
-                expected: "constant".to_string(),
-                found: "function".to_string(),
-            }),
+            (SymbolKind::Const, Symbol::Func { .. } | Symbol::LocalFunc { .. }) => {
+                Err(LinkerError::TypeMismatch {
+                    name: metadata.name.to_string(),
+                    expected: "constant".to_string(),
+                    found: "function".to_string(),
+                })
+            }
             (
                 SymbolKind::GlobalFunc { .. } | SymbolKind::LocalFunc { .. },
                 Symbol::Const { .. },
@@ -154,6 +148,38 @@ impl Linker {
                 expected: "function".to_string(),
                 found: "constant".to_string(),
             }),
+            _ => unreachable!(),
+        }
+    }
+
+    fn valildate_args(
+        metadata: &SymbolMetadata,
+        arity: usize,
+        min_args: usize,
+        variadic: bool,
+    ) -> Result<(), LinkerError> {
+        // Check if the call is valid:
+        // - For non-variadic: arity must match exactly
+        // - For variadic: arity must be >= min_args
+        let valid = if variadic {
+            arity >= min_args
+        } else {
+            arity == min_args
+        };
+
+        if valid {
+            Ok(())
+        } else {
+            let expected_msg = if variadic {
+                format!("at least {} arguments", min_args)
+            } else {
+                format!("exactly {} arguments", min_args)
+            };
+            Err(LinkerError::TypeMismatch {
+                name: metadata.name.to_string(),
+                expected: expected_msg,
+                found: format!("{} arguments provided", arity),
+            })
         }
     }
 }
