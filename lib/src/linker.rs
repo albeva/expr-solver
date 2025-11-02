@@ -110,7 +110,7 @@ impl Linker {
         match (&metadata.kind, symbol) {
             (SymbolKind::Const, Symbol::Const { .. }) => Ok(()),
             (
-                SymbolKind::Func { arity, .. },
+                SymbolKind::GlobalFunc { arity, .. } | SymbolKind::LocalFunc { arity, .. },
                 Symbol::Func {
                     args: min_args,
                     variadic,
@@ -146,7 +146,10 @@ impl Linker {
                 expected: "constant".to_string(),
                 found: "function".to_string(),
             }),
-            (SymbolKind::Func { .. }, Symbol::Const { .. }) => Err(LinkerError::TypeMismatch {
+            (
+                SymbolKind::GlobalFunc { .. } | SymbolKind::LocalFunc { .. },
+                Symbol::Const { .. },
+            ) => Err(LinkerError::TypeMismatch {
                 name: metadata.name.to_string(),
                 expected: "function".to_string(),
                 found: "constant".to_string(),

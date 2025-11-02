@@ -31,13 +31,20 @@ pub enum SymbolKind {
     /// A constant value
     Const,
     /// A function with specified arity
-    Func {
+    GlobalFunc {
         /// Minimum number of arguments
         arity: usize,
         /// Whether the function accepts additional arguments
         variadic: bool,
+    },
+    /// Local func
+    LocalFunc {
+        /// Number of arguments
+        arity: usize,
         /// Parameter names
-        params: Option<Vec<Cow<'static, str>>>,
+        params: Vec<Cow<'static, str>>,
+        /// Offset
+        offset: usize,
     },
 }
 
@@ -45,10 +52,9 @@ impl From<&Symbol> for SymbolKind {
     fn from(symbol: &Symbol) -> Self {
         match symbol {
             Symbol::Const { .. } => SymbolKind::Const,
-            Symbol::Func { args, variadic, .. } => SymbolKind::Func {
+            Symbol::Func { args, variadic, .. } => SymbolKind::GlobalFunc {
                 arity: *args,
                 variadic: *variadic,
-                params: None,
             },
         }
     }

@@ -78,6 +78,7 @@ impl SymTable {
         variadic: bool,
         callback: fn(&[Number]) -> Result<Number, FuncError>,
         local: bool,
+        offset: Option<usize>,
     ) -> Result<&mut Self, SymbolError> {
         let name = name.into();
         if self.get_by_name(&name).is_ok() {
@@ -90,6 +91,7 @@ impl SymTable {
             callback,
             description: None,
             local,
+            offset
         });
         Ok(self)
     }

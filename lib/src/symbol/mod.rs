@@ -69,6 +69,8 @@ pub enum Symbol {
         description: Option<Cow<'static, str>>,
         /// Whether this is a local function (reserved for future use) or global (from stdlib)
         local: bool,
+        /// Func offset (local only)
+        offset: Option<usize>,
     },
 }
 

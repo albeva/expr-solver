@@ -330,11 +330,14 @@ impl<'p, S> Print<'p, S> {
                 let addr = self.style.asm_address(&format!("{:04X}", target));
                 format!("{} {}", instr, addr)
             }
-            Instr::LoadParam(_) => {
-                unimplemented!()
+            Instr::LoadParam(idx) => {
+                let instr = self.style.keyword("LOAD_PARAM");
+                let idx = self.style.number(&idx.to_string());
+                format!("{} {}", instr, idx)
             }
             Instr::Ret => {
-                unimplemented!()
+                let instr = self.style.keyword("RET");
+                format!("{}", instr)
             }
         }
     }

@@ -112,14 +112,16 @@ impl IrBuilder {
 
         self.locals = Some(params.iter().map(|s| Owned(s.to_string())).collect());
 
+        let offset = self.bytecode.len();
+
         // Declare local symbol
         let idx = self.symbols.len();
         self.symbols.push(SymbolMetadata {
             name: Owned(name.to_string()),
-            kind: SymbolKind::Func {
+            kind: SymbolKind::LocalFunc {
                 arity: params.len(),
-                variadic: false,
-                params: None,
+                params: Vec::default(),
+                offset,
             },
             local: true,
             index: None,
@@ -132,12 +134,13 @@ impl IrBuilder {
         self.bytecode.push(Instr::Ret);
 
         // assign locals
-        let locals = self.locals.take();
-        self.symbols[idx].kind = SymbolKind::Func {
-            arity: params.len(),
-            variadic: false,
-            params: locals,
-        };
+        let locals = self.locals.take().unwrap();
+        match &mut self.symbols[idx].kind {
+            SymbolKind::LocalFunc { params, .. } => {
+                *params = locals;
+            }
+            _ => unreachable!(),
+        }
 
         // done
         Ok(())
@@ -218,10 +221,9 @@ impl IrBuilder {
         // Get or create symbol index for this function
         let idx = self.get_or_create_symbol(
             name,
-            SymbolKind::Func {
+            SymbolKind::GlobalFunc {
                 arity: args.len(),
                 variadic: false,
-                params: None,
             },
         );
         self.bytecode.push(Instr::Call(idx, args.len()));
