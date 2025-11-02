@@ -112,6 +112,13 @@ impl IrBuilder {
 
         self.locals = Some(params.iter().map(|s| Owned(s.to_string())).collect());
 
+        // jmp instruction to skip the function body
+        // TODO: functions should bodies should be at the end of bytecode
+        //       and execution terminated with HALT.
+        let jump_offset = self.bytecode.len();
+        self.bytecode.push(Instr::Jmp(0));
+
+        // Function start
         let offset = self.bytecode.len();
 
         // Declare local symbol
@@ -132,6 +139,9 @@ impl IrBuilder {
 
         // ret instruction
         self.bytecode.push(Instr::Ret);
+
+        // patch the jump instruction
+        self.bytecode[jump_offset] = Instr::Jmp(self.bytecode.len());
 
         // assign locals
         let locals = self.locals.take().unwrap();

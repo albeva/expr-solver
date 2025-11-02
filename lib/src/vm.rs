@@ -40,6 +40,13 @@ pub struct Vm<'vm> {
     bytecode: &'vm [Instr],
     symtable: &'vm mut SymTable,
     stack: Vec<Number>,
+    call_stack: Vec<CallSatck>,
+    ip: usize,
+}
+
+#[derive(Debug)]
+struct CallSatck {
+    sp: usize,
     ip: usize,
 }
 
@@ -66,6 +73,7 @@ impl<'vm> Vm<'vm> {
             bytecode,
             symtable,
             stack: Vec::new(),
+            call_stack: Vec::new(),
             ip: 0,
         };
 
@@ -129,18 +137,27 @@ impl<'vm> Vm<'vm> {
                 Instr::Div => self.div_op()?,
                 Instr::Pow => self.pow_op()?,
                 Instr::Fact => self.fact_op()?,
-                Instr::Call(idx, argc) => self.call_op(*idx, *argc)?,
+                Instr::Call(idx, argc) => {
+                    self.call_op(*idx, *argc)?;
+                    continue;
+                }
                 Instr::Equal => self.comparison_op(|a, b| a == b)?,
                 Instr::NotEqual => self.comparison_op(|a, b| a != b)?,
                 Instr::Less => self.comparison_op(|a, b| a < b)?,
                 Instr::LessEqual => self.comparison_op(|a, b| a <= b)?,
                 Instr::Greater => self.comparison_op(|a, b| a > b)?,
                 Instr::GreaterEqual => self.comparison_op(|a, b| a >= b)?,
-                Instr::LoadParam(_) => {
-                    unimplemented!()
+                Instr::LoadParam(idx) => {
+                    let call = self.call_stack.last().unwrap();
+                    let value = self.stack[call.sp + idx];
+                    self.stack.push(value);
                 }
                 Instr::Ret => {
-                    unimplemented!()
+                    let call = self.call_stack.pop().unwrap();
+                    let result = self.pop()?;
+                    self.stack.truncate(call.sp);
+                    self.stack.push(result);
+                    self.ip = call.ip;
                 }
             }
 
@@ -361,10 +378,19 @@ impl<'vm> Vm<'vm> {
                 let result = callback(args).map_err(VmError::FunctionError)?;
                 self.stack.truncate(args_start);
                 self.stack.push(result);
+                self.ip += 1;
                 Ok(())
             }
             Symbol::Const { .. } => unreachable!(),
-            Symbol::LocalFunc { .. } => unimplemented!(),
+            Symbol::LocalFunc { params, offset, .. } => {
+                let sp = self.stack.len() - params.len();
+                let ip = self.ip;
+                self.call_stack.push(CallSatck {
+                    sp, ip
+                });
+                self.ip = *offset;
+                Ok(())
+            }
         }
     }
 
