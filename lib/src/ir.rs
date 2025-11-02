@@ -29,6 +29,9 @@ pub enum Instr {
     // Control flow
     Jmp(usize), // Unconditional jump to instruction index
     Jz(usize),  // Jump to instruction index if top of stack is zero (consumes value)
+    // Func handling
+    LoadParam(usize), // Load function param
+    Ret,
 }
 
 impl From<UnOp> for Instr {

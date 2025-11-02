@@ -1,10 +1,10 @@
 //! Recursive descent parser for mathematical expressions.
 
-use super::ast::{Expr, UnOp};
+use super::ast::{Decl, Expr, UnOp};
 use super::error::ParseError;
 use super::lexer::Lexer;
-use crate::span::Span;
-use crate::token::Token;
+use super::span::Span;
+use super::token::Token;
 
 pub type ParseResult<'src> = Result<Expr<'src>, ParseError>;
 
@@ -196,12 +196,41 @@ impl<'src> Parser<'src> {
         Ok(Expr::let_expr(decls, body, span))
     }
 
-    fn parse_let_decl(&mut self) -> Result<(&'src str, Expr<'src>), ParseError> {
-        // Parse: name = expr
+    fn parse_let_decl(&mut self) -> Result<Decl<'src>, ParseError> {
         let name = self.ident()?;
+        if self.accept(&Token::ParenOpen) {
+            self.parse_func_decl(name)
+        } else {
+            self.parse_var_decl(name)
+        }
+    }
+
+    fn parse_var_decl(&mut self, name: &'src str) -> Result<Decl<'src>, ParseError> {
         self.expect(&Token::Assign)?;
-        let expr = self.expression()?;
-        Ok((name, expr))
+        let body = self.expression()?;
+        Ok(Decl::Var { name, body })
+    }
+
+    fn parse_func_decl(&mut self, name: &'src str) -> Result<Decl<'src>, ParseError> {
+        // [ id { "," id] ")" ]
+        let mut params: Vec<&'src str> = Vec::new();
+        if !self.accept(&Token::ParenClose) {
+            loop {
+                let param = self.ident()?;
+                params.push(param);
+                if self.accept(&Token::Comma) {
+                    continue;
+                }
+                self.expect(&Token::ParenClose)?;
+                break;
+            }
+        }
+
+        // "=" expression .
+        self.expect(&Token::Assign)?;
+        let body = self.expression()?;
+
+        Ok(Decl::Func { name, params, body })
     }
 
     fn ident(&mut self) -> Result<&'src str, ParseError> {
@@ -211,10 +240,7 @@ impl<'src> Parser<'src> {
                 Ok(id)
             }
             _ => Err(ParseError::UnexpectedToken {
-                message: format!(
-                    "expected identifier in let declaration, found '{}'",
-                    self.lookahead.lexeme()
-                ),
+                message: format!("expected identifier, found '{}'", self.lookahead.lexeme()),
                 span: self.span,
             }),
         }

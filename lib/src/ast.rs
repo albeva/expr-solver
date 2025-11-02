@@ -4,6 +4,35 @@ use crate::number::Number;
 use crate::span::Span;
 use crate::token::Token;
 
+#[derive(Debug, Clone)]
+pub enum Decl<'src> {
+    Var {
+        name: &'src str,
+        body: Expr<'src>,
+    },
+    Func {
+        name: &'src str,
+        params: Vec<&'src str>,
+        body: Expr<'src>,
+    },
+}
+
+impl<'src> Decl<'src> {
+    pub fn name(&self) -> &'src str {
+        match self {
+            Decl::Var { name, .. } => name,
+            Decl::Func { name, .. } => name,
+        }
+    }
+
+    pub fn body(&self) -> &Expr<'src> {
+        match self {
+            Decl::Var { body, .. } => body,
+            Decl::Func { body, .. } => body,
+        }
+    }
+}
+
 /// Unary operators: negation and factorial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
@@ -104,7 +133,7 @@ pub enum ExprKind<'src> {
     },
     /// Let expression with local constant declarations
     Let {
-        decls: Vec<(&'src str, Expr<'src>)>,
+        decls: Vec<Decl<'src>>,
         body: Box<Expr<'src>>,
     },
 }
@@ -168,7 +197,7 @@ impl<'src> Expr<'src> {
         }
     }
 
-    pub fn let_expr(decls: Vec<(&'src str, Expr<'src>)>, body: Expr<'src>, span: Span) -> Self {
+    pub fn let_expr(decls: Vec<Decl<'src>>, body: Expr<'src>, span: Span) -> Self {
         Self {
             kind: ExprKind::Let {
                 decls,

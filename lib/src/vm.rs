@@ -136,6 +136,12 @@ impl<'vm> Vm<'vm> {
                 Instr::LessEqual => self.comparison_op(|a, b| a <= b)?,
                 Instr::Greater => self.comparison_op(|a, b| a > b)?,
                 Instr::GreaterEqual => self.comparison_op(|a, b| a >= b)?,
+                Instr::LoadParam(_) => {
+                    unimplemented!()
+                }
+                Instr::Ret => {
+                    unimplemented!()
+                }
             }
 
             self.ip += 1;

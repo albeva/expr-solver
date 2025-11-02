@@ -27,7 +27,7 @@
 //! ```
 
 use crate::SymbolError;
-use crate::ast::{Expr, ExprKind};
+use crate::ast::{Decl, Expr, ExprKind};
 use crate::error::IrError;
 use crate::ir::Instr;
 use crate::metadata::{SymbolKind, SymbolMetadata};
@@ -68,29 +68,47 @@ impl IrBuilder {
     }
 
     /// Emits let declarations.
-    fn emit_let(&mut self, decls: &[(&str, Expr)]) -> Result<(), IrError> {
-        for (name, value_expr) in decls {
-            // Check for duplicate declarations
-            if self.symbols.iter().any(|meta| meta.name == *name) {
-                return Err(SymbolError::DuplicateSymbol(name.to_string()).into());
+    fn emit_let(&mut self, decls: &[Decl]) -> Result<(), IrError> {
+        for decl in decls {
+            match decl {
+                Decl::Var { name, body } => self.emit_var_decl(name, body)?,
+                Decl::Func { name, params, body } => self.emit_func_decl(name, params, body)?,
             }
-
-            // Emit bytecode for the value expression
-            self.emit_expr(value_expr);
-
-            // Declare local symbol
-            let idx = self.symbols.len();
-            self.symbols.push(SymbolMetadata {
-                name: Owned(name.to_string()),
-                kind: SymbolKind::Const,
-                local: true,
-                index: None,
-            });
-
-            // Store the value
-            self.bytecode.push(Instr::Store(idx));
         }
         Ok(())
+    }
+
+    fn emit_var_decl(&mut self, name: &str, expr: &Expr) -> Result<(), IrError> {
+        // Check for duplicate declarations
+        if self.symbols.iter().any(|meta| meta.name == *name) {
+            return Err(SymbolError::DuplicateSymbol(name.to_string()).into());
+        }
+
+        // Emit bytecode for the value expression
+        self.emit_expr(expr);
+
+        // Declare local symbol
+        let idx = self.symbols.len();
+        self.symbols.push(SymbolMetadata {
+            name: Owned(name.to_string()),
+            kind: SymbolKind::Const,
+            local: true,
+            index: None,
+        });
+
+        // Store the value
+        self.bytecode.push(Instr::Store(idx));
+
+        Ok(())
+    }
+
+    fn emit_func_decl(
+        &mut self,
+        _name: &str,
+        _params: &[&str],
+        _body: &Expr,
+    ) -> Result<(), IrError> {
+        unimplemented!()
     }
 
     /// Emits bytecode for an expression.

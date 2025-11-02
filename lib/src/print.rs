@@ -217,6 +217,12 @@ impl<'p, S> Print<'p, S> {
                     // Part of IF expression, already handled
                     ip += 1;
                 }
+                Instr::LoadParam(_) => {
+                    unimplemented!()
+                }
+                Instr::Ret => {
+                    unimplemented!()
+                }
             }
         }
 
@@ -249,12 +255,7 @@ impl<'p, S> Print<'p, S> {
     }
 
     /// Core assembly formatting logic shared between Compiled and Linked.
-    fn format_assembly<F>(
-        &self,
-        bytecode: &[Instr],
-        version: &str,
-        get_symbol_name: &F,
-    ) -> String
+    fn format_assembly<F>(&self, bytecode: &[Instr], version: &str, get_symbol_name: &F) -> String
     where
         F: Fn(usize) -> String,
     {
@@ -328,6 +329,12 @@ impl<'p, S> Print<'p, S> {
                 let instr = self.style.keyword("JZ");
                 let addr = self.style.asm_address(&format!("{:04X}", target));
                 format!("{} {}", instr, addr)
+            }
+            Instr::LoadParam(_) => {
+                unimplemented!()
+            }
+            Instr::Ret => {
+                unimplemented!()
             }
         }
     }
