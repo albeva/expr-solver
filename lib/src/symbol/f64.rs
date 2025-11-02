@@ -56,37 +56,37 @@ impl SymTable {
                 name: "pi".into(),
                 value: std::f64::consts::PI,
                 description: Some("π (3.14159...)".into()),
-                local: false,
+                local: false
             },
             Symbol::Const {
                 name: "e".into(),
                 value: std::f64::consts::E,
                 description: Some("Euler's number (2.71828...)".into()),
-                local: false,
+                local: false
             },
             Symbol::Const {
                 name: "tau".into(),
                 value: std::f64::consts::TAU,
                 description: Some("2π (6.28318...)".into()),
-                local: false,
+                local: false
             },
             Symbol::Const {
                 name: "ln2".into(),
                 value: std::f64::consts::LN_2,
                 description: Some("Natural logarithm of 2".into()),
-                local: false,
+                local: false
             },
             Symbol::Const {
                 name: "ln10".into(),
                 value: std::f64::consts::LN_10,
                 description: Some("Natural logarithm of 10".into()),
-                local: false,
+                local: false
             },
             Symbol::Const {
                 name: "sqrt2".into(),
                 value: std::f64::consts::SQRT_2,
                 description: Some("Square root of 2".into()),
-                local: false,
+                local: false
             },
             // Trigonometric functions
             Symbol::Func {
@@ -94,80 +94,70 @@ impl SymTable {
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].sin()),
-                description: Some("Sine".into()),
-                local: false,
+                description: Some("Sine".into())
             },
             Symbol::Func {
                 name: "cos".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].cos()),
-                description: Some("Cosine".into()),
-                local: false,
+                description: Some("Cosine".into())
             },
             Symbol::Func {
                 name: "tan".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].tan()),
-                description: Some("Tangent".into()),
-                local: false,
+                description: Some("Tangent".into())
             },
             Symbol::Func {
                 name: "asin".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].asin()),
-                description: Some("Arcsine".into()),
-                local: false,
+                description: Some("Arcsine".into())
             },
             Symbol::Func {
                 name: "acos".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].acos()),
-                description: Some("Arccosine".into()),
-                local: false,
+                description: Some("Arccosine".into())
             },
             Symbol::Func {
                 name: "atan".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].atan()),
-                description: Some("Arctangent".into()),
-                local: false,
+                description: Some("Arctangent".into())
             },
             Symbol::Func {
                 name: "atan2".into(),
                 args: 2,
                 variadic: false,
                 callback: |args| Ok(args[0].atan2(args[1])),
-                description: Some("Two-argument arctangent".into()),
-                local: false,
+                description: Some("Two-argument arctangent".into())
             },
             Symbol::Func {
                 name: "sinh".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].sinh()),
-                description: Some("Hyperbolic sine".into()),
-                local: false,
+                description: Some("Hyperbolic sine".into())
             },
             Symbol::Func {
                 name: "cosh".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].cosh()),
-                description: Some("Hyperbolic cosine".into()),
-                local: false,
+                description: Some("Hyperbolic cosine".into())
             },
             Symbol::Func {
                 name: "tanh".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].tanh()),
-                description: Some("Hyperbolic tangent".into()),
-                local: false,
+                description: Some("Hyperbolic tangent".into())
             },
             // Power and root functions
             Symbol::Func {
@@ -175,24 +165,21 @@ impl SymTable {
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].sqrt()),
-                description: Some("Square root".into()),
-                local: false,
+                description: Some("Square root".into())
             },
             Symbol::Func {
                 name: "cbrt".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].cbrt()),
-                description: Some("Cube root".into()),
-                local: false,
+                description: Some("Cube root".into())
             },
             Symbol::Func {
                 name: "pow".into(),
                 args: 2,
                 variadic: false,
                 callback: |args| Ok(args[0].powf(args[1])),
-                description: Some("x raised to power y".into()),
-                local: false,
+                description: Some("x raised to power y".into())
             },
             // Logarithmic and exponential functions
             Symbol::Func {
@@ -200,40 +187,35 @@ impl SymTable {
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].ln()),
-                description: Some("Natural logarithm".into()),
-                local: false,
+                description: Some("Natural logarithm".into())
             },
             Symbol::Func {
                 name: "log2".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].log2()),
-                description: Some("Base-2 logarithm".into()),
-                local: false,
+                description: Some("Base-2 logarithm".into())
             },
             Symbol::Func {
                 name: "log10".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].log10()),
-                description: Some("Base-10 logarithm".into()),
-                local: false,
+                description: Some("Base-10 logarithm".into())
             },
             Symbol::Func {
                 name: "exp".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].exp()),
-                description: Some("e raised to power x".into()),
-                local: false,
+                description: Some("e raised to power x".into())
             },
             Symbol::Func {
                 name: "exp2".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].exp2()),
-                description: Some("2 raised to power x".into()),
-                local: false,
+                description: Some("2 raised to power x".into())
             },
             // Basic math functions
             Symbol::Func {
@@ -241,8 +223,7 @@ impl SymTable {
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].abs()),
-                description: Some("Absolute value".into()),
-                local: false,
+                description: Some("Absolute value".into())
             },
             Symbol::Func {
                 name: "sign".into(),
@@ -258,72 +239,63 @@ impl SymTable {
                         Ok(0.0)
                     }
                 },
-                description: Some("Sign function (-1, 0, or 1)".into()),
-                local: false,
+                description: Some("Sign function (-1, 0, or 1)".into())
             },
             Symbol::Func {
                 name: "floor".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].floor()),
-                description: Some("Floor function".into()),
-                local: false,
+                description: Some("Floor function".into())
             },
             Symbol::Func {
                 name: "ceil".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].ceil()),
-                description: Some("Ceiling function".into()),
-                local: false,
+                description: Some("Ceiling function".into())
             },
             Symbol::Func {
                 name: "round".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].round()),
-                description: Some("Round to nearest integer".into()),
-                local: false,
+                description: Some("Round to nearest integer".into())
             },
             Symbol::Func {
                 name: "trunc".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].trunc()),
-                description: Some("Truncate to integer".into()),
-                local: false,
+                description: Some("Truncate to integer".into())
             },
             Symbol::Func {
                 name: "fract".into(),
                 args: 1,
                 variadic: false,
                 callback: |args| Ok(args[0].fract()),
-                description: Some("Fractional part".into()),
-                local: false,
+                description: Some("Fractional part".into())
             },
             Symbol::Func {
                 name: "mod".into(),
                 args: 2,
                 variadic: false,
                 callback: |args| Ok(args[0] % args[1]),
-                description: Some("Remainder of x/y".into()),
-                local: false,
+                description: Some("Remainder of x/y".into())
             },
             Symbol::Func {
                 name: "hypot".into(),
                 args: 2,
                 variadic: false,
                 callback: |args| Ok(args[0].hypot(args[1])),
-                description: Some("Euclidean distance sqrt(x²+y²)".into()),
-                local: false,
+                description: Some("Euclidean distance sqrt(x²+y²)".into())
             },
             Symbol::Func {
                 name: "clamp".into(),
                 args: 3,
                 variadic: false,
                 callback: |args| Ok(args[0].clamp(args[1].min(args[2]), args[2].max(args[1]))),
-                description: Some("Constrain value between bounds".into()),
-                local: false,
+                description: Some("Constrain value between bounds".into())
             },
             // Variadic functions
             Symbol::Func {
@@ -331,24 +303,21 @@ impl SymTable {
                 args: 1,
                 variadic: true,
                 callback: |args| Ok(args.iter().fold(f64::INFINITY, |acc, &x| acc.min(x))),
-                description: Some("Minimum value".into()),
-                local: false,
+                description: Some("Minimum value".into())
             },
             Symbol::Func {
                 name: "max".into(),
                 args: 1,
                 variadic: true,
                 callback: |args| Ok(args.iter().fold(f64::NEG_INFINITY, |acc, &x| acc.max(x))),
-                description: Some("Maximum value".into()),
-                local: false,
+                description: Some("Maximum value".into())
             },
             Symbol::Func {
                 name: "sum".into(),
                 args: 1,
                 variadic: true,
                 callback: |args| Ok(args.iter().sum()),
-                description: Some("Sum of values".into()),
-                local: false,
+                description: Some("Sum of values".into())
             },
             Symbol::Func {
                 name: "avg".into(),
@@ -359,8 +328,7 @@ impl SymTable {
                     let count = args.len() as f64;
                     Ok(sum / count)
                 },
-                description: Some("Average of values".into()),
-                local: false,
+                description: Some("Average of values".into())
             },
         ])
     }

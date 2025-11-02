@@ -381,7 +381,6 @@ impl<'vm> Vm<'vm> {
                 self.ip += 1;
                 Ok(())
             }
-            Symbol::Const { .. } => unreachable!(),
             Symbol::LocalFunc { params, offset, .. } => {
                 let sp = self.stack.len() - params.len();
                 let ip = self.ip;
@@ -390,7 +389,8 @@ impl<'vm> Vm<'vm> {
                 });
                 self.ip = *offset;
                 Ok(())
-            }
+            },
+            _ => panic!("Invalid call symbol"),
         }
     }
 
