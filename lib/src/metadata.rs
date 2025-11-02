@@ -18,6 +18,7 @@ pub struct SymbolMetadata {
     pub kind: SymbolKind,
     /// Local or global?
     pub local: bool,
+
     /// The resolved index in the linked symbol table (None until linked)
     #[cfg_attr(feature = "serialization", serde(skip))]
     pub index: Option<usize>,
@@ -35,6 +36,8 @@ pub enum SymbolKind {
         arity: usize,
         /// Whether the function accepts additional arguments
         variadic: bool,
+        /// Parameter names
+        params: Option<Vec<Cow<'static, str>>>,
     },
 }
 
@@ -45,6 +48,7 @@ impl From<&Symbol> for SymbolKind {
             Symbol::Func { args, variadic, .. } => SymbolKind::Func {
                 arity: *args,
                 variadic: *variadic,
+                params: None,
             },
         }
     }

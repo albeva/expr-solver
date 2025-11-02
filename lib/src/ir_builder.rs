@@ -31,6 +31,7 @@ use crate::ast::{Decl, Expr, ExprKind};
 use crate::error::IrError;
 use crate::ir::Instr;
 use crate::metadata::{SymbolKind, SymbolMetadata};
+use std::borrow::Cow;
 use std::borrow::Cow::Owned;
 
 /// Builder for generating bytecode from an AST.
@@ -41,6 +42,7 @@ use std::borrow::Cow::Owned;
 pub struct IrBuilder {
     bytecode: Vec<Instr>,
     symbols: Vec<SymbolMetadata>,
+    locals: Option<Vec<Cow<'static, str>>>,
 }
 
 impl IrBuilder {
@@ -102,13 +104,43 @@ impl IrBuilder {
         Ok(())
     }
 
-    fn emit_func_decl(
-        &mut self,
-        _name: &str,
-        _params: &[&str],
-        _body: &Expr,
-    ) -> Result<(), IrError> {
-        unimplemented!()
+    fn emit_func_decl(&mut self, name: &str, params: &[&str], body: &Expr) -> Result<(), IrError> {
+        // Check for duplicate declarations
+        if self.symbols.iter().any(|meta| meta.name == *name) {
+            return Err(SymbolError::DuplicateSymbol(name.to_string()).into());
+        }
+
+        self.locals = Some(params.iter().map(|s| Owned(s.to_string())).collect());
+
+        // Declare local symbol
+        let idx = self.symbols.len();
+        self.symbols.push(SymbolMetadata {
+            name: Owned(name.to_string()),
+            kind: SymbolKind::Func {
+                arity: params.len(),
+                variadic: false,
+                params: None,
+            },
+            local: true,
+            index: None,
+        });
+
+        // the func body
+        self.emit_expr(body);
+
+        // ret instruction
+        self.bytecode.push(Instr::Ret);
+
+        // assign locals
+        let locals = self.locals.take();
+        self.symbols[idx].kind = SymbolKind::Func {
+            arity: params.len(),
+            variadic: false,
+            params: locals,
+        };
+
+        // done
+        Ok(())
     }
 
     /// Emits bytecode for an expression.
@@ -118,6 +150,12 @@ impl IrBuilder {
                 self.bytecode.push(Instr::Push(*v));
             }
             ExprKind::Ident { name } => {
+                if let Some(locals) = self.locals.as_ref() {
+                    if let Some(idx) = locals.iter().position(|l| l.eq_ignore_ascii_case(name)) {
+                        self.bytecode.push(Instr::LoadParam(idx));
+                        return;
+                    }
+                }
                 let idx = self.get_or_create_symbol(name, SymbolKind::Const);
                 self.bytecode.push(Instr::Load(idx));
             }
@@ -183,6 +221,7 @@ impl IrBuilder {
             SymbolKind::Func {
                 arity: args.len(),
                 variadic: false,
+                params: None,
             },
         );
         self.bytecode.push(Instr::Call(idx, args.len()));
