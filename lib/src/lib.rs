@@ -10,8 +10,9 @@
 //! - **Bytecode compilation** - Compile once, execute many times
 //! - **Pretty printing** - Decompile bytecode to syntax-highlighted expressions
 //! - **Custom symbols** - Add your own constants and functions
+//! - **User-defined functions** - Define custom functions with `let`, including recursive functions
 //! - **Local constants** - `let` ... `then` syntax for declaring scoped constants
-//! - **Control flow** - Conditional expressions with `if(condition, then, else)`
+//! - **Control flow** - Conditional expressions with `if(condition, then, else)` and lazy evaluation
 //! - **Serialization** - Save/load compiled programs (requires `serialization` feature)
 //!
 //! ## Numeric Type Selection
@@ -140,7 +141,33 @@
 //! assert_eq!(result, num!(15));
 //! ```
 //!
-//! # Local Constants with LET THEN
+//! # User-Defined Functions and Local Constants
+//!
+//! Define custom functions and local constants using `let` ... `then` syntax:
+//!
+//! ## Functions
+//!
+//! ```
+//! use expr_solver::{eval, num};
+//!
+//! // Simple function
+//! let result = eval("let add(a, b) = a + b then add(3, 5)").unwrap();
+//! assert_eq!(result, num!(8));
+//!
+//! // Recursive function with conditional logic
+//! let result = eval("let fact(n) = if(n == 0, 1, n * fact(n - 1)) then fact(5)").unwrap();
+//! assert_eq!(result, num!(120));
+//! ```
+//!
+//! **Function Features:**
+//! - Define functions with `let name(params...) = body`
+//! - Functions can call themselves recursively
+//! - Parameters are local to the function scope
+//! - Functions have access to all symbols in scope
+//! - The `if(condition, then_expr, else_expr)` special form enables conditional logic
+//! - `if` uses lazy evaluation - only the selected branch is executed
+//!
+//! ## Local Constants
 //!
 //! Declare local constants using `let` ... `then` syntax:
 //!
@@ -170,13 +197,14 @@
 //! - Cannot reference forward (e.g., `let x = y, y = 1 then x` is an error)
 //! - Cannot shadow global constants (e.g., `let pi = 3 then pi` is an error)
 //! - Duplicate names in the same `let` block are errors
+//! - Only one `let` block is allowed per program (at the beginning)
 //!
 //! # Supported Operators
 //!
 //! - Arithmetic: `+`, `-`, `*`, `/`, `^` (power), `!` (factorial), unary `-`
 //! - Comparison: `==`, `!=`, `<`, `<=`, `>`, `>=` (return 1 or 0)
 //! - Grouping: `(` `)`
-//! - Control flow: `if(condition, then_value, else_value)`
+//! - Control flow: `if(condition, then_value, else_value)` - Special form with lazy evaluation
 //!
 //! # Built-in Functions
 //!

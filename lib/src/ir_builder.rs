@@ -9,8 +9,22 @@
 //! 1. Traverse the AST recursively
 //! 2. Emit bytecode instructions for each expression
 //! 3. Collect symbol references (functions and constants)
-//! 4. Handle `let` declarations by creating local symbols
+//! 4. Handle `let` declarations by creating local symbols and functions
 //! 5. Return bytecode and symbol metadata for linking
+//!
+//! ## User-Defined Functions
+//!
+//! Functions are compiled with the following structure:
+//! - **JMP instruction**: Skips the function body during initialization
+//! - **Function body**: Bytecode for the function expression
+//! - **RET instruction**: Returns from the function call
+//! - **Symbol metadata**: Stores function name, parameters, and bytecode offset
+//!
+//! When a function is called, the VM:
+//! 1. Pushes a call frame onto the call stack
+//! 2. Jumps to the function's bytecode offset
+//! 3. Executes the function body (using LoadParam for parameters)
+//! 4. Returns via RET instruction
 //!
 //! # Example
 //!
@@ -24,6 +38,16 @@
 //! let (bytecode, symbols) = IrBuilder::new().build(&ast).unwrap();
 //! // bytecode contains instructions to compute the expression
 //! // symbols contains metadata about 'x' (local) and any other references
+//! ```
+//!
+//! With functions:
+//! ```ignore
+//! let mut parser = Parser::new("let add(a, b) = a + b then add(3, 5)");
+//! let ast = parser.parse().unwrap().unwrap();
+//!
+//! let (bytecode, symbols) = IrBuilder::new().build(&ast).unwrap();
+//! // bytecode: JMP, LoadParam, LoadParam, Add, Ret, Push, Push, Call
+//! // symbols: metadata for 'add' function with parameters ['a', 'b']
 //! ```
 
 use crate::SymbolError;

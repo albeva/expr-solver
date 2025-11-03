@@ -24,26 +24,26 @@ pub struct SymbolMetadata {
     pub index: Option<usize>,
 }
 
-/// The kind of symbol (constant or function) with its requirements.
+/// The kind of symbol (constant, built-in function, or user-defined function) with its requirements.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum SymbolKind {
     /// A constant value
     Const,
-    /// A function with specified arity
+    /// A built-in function with native implementation
     GlobalFunc {
         /// Minimum number of arguments
         arity: usize,
         /// Whether the function accepts additional arguments
         variadic: bool,
     },
-    /// Local func
+    /// A user-defined function compiled to bytecode
     LocalFunc {
-        /// Number of arguments
+        /// Number of arguments (parameter count)
         arity: usize,
-        /// Parameter names
+        /// Parameter names for the function
         params: Vec<Cow<'static, str>>,
-        /// Offset
+        /// Bytecode offset where the function body starts
         offset: usize,
     },
 }

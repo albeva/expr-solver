@@ -7,11 +7,12 @@ A mathematical expression evaluator library written in Rust with support for cus
 ## Features
 
 - **Mathematical expressions** - Arithmetic, comparisons, and built-in functions
+- **User-defined functions** - Define custom functions with the `let` keyword, including recursive functions
 - **Flexible numeric types** - Choose between fast f64 or high-precision 128-bit Decimal
 - **Custom symbols** - Register your own constants and functions
 - **Rich error messages** - Syntax errors with source location highlighting
 - **Bytecode compilation** - Compile expressions to portable binary format
-- **Stack-based VM** - Efficient execution on a virtual machine
+- **Stack-based VM** - Efficient execution with call stack support for functions
 - **Pretty printing** - Decompile bytecode to syntax-highlighted expressions (optional feature)
 
 ## What's it For?
@@ -161,6 +162,30 @@ let result = linked.execute().unwrap(); // 25.0
 assert_eq!(result, 25.0);
 ```
 
+### User-Defined Functions
+
+Define custom functions using the `let` keyword:
+
+```rust
+use expr_solver::eval;
+
+// Simple function
+let result = eval("let add(a, b) = a + b then add(3, 5)").unwrap();
+assert_eq!(result, 8.0);
+
+// Recursive function
+let result = eval("let fact(n) = if(n == 0, 1, n * fact(n - 1)) then fact(5)").unwrap();
+assert_eq!(result, 120.0);
+```
+
+**Syntax:** `let name(params...) = body then expression`
+
+- Functions are defined at the beginning with `let`
+- The `then` keyword separates declarations from the main expression
+- Functions can call themselves recursively
+- Functions have access to their parameters and all symbols in scope
+- The `if(condition, then_expr, else_expr)` special form enables conditional logic with lazy evaluation
+
 ## Numeric Precision
 
 The library supports two numeric backends:
@@ -191,9 +216,11 @@ The library supports two numeric backends:
 | **Hyperbolic** | `sinh`, `cosh`, `tanh`                                                    |
 | **Exp/Log**    | `sqrt`, `cbrt`, `pow`, `exp`, `exp2`, `log`, `log2`, `log10`, `hypot`     |
 | **Variadic**   | `min`, `max`, `sum`, `avg` (1+ args)                                      |
-| **Special**    | `if(cond, then, else)`                                                    |
+| **Special**    | `if(cond, then, else)` - Conditional with lazy evaluation                 |
 
-> **Note:** In `decimal` mode, some operations (inverse trig, `pow`) use internal f64 conversion due to `rust_decimal` limitations, which may introduce small precision loss.
+> **Note:**
+> - The `if` special form uses lazy evaluation - only the selected branch is executed
+> - In `decimal` mode, some operations (inverse trig, `pow`) use internal f64 conversion due to `rust_decimal` limitations, which may introduce small precision loss
 
 ## Built-in Constants
 
@@ -226,6 +253,14 @@ expr-solver -D x=10 -D y=20 "x + y"
 expr-solver -e "let x = 10 then x * 2" --print
 # Output: let x = 10 then x * 2
 
+# User-defined functions
+expr-solver -e "let add(a, b) = a + b then add(3, 5)"
+# Output: 8
+
+# Recursive functions
+expr-solver -e "let fact(n) = if(n == 0, 1, n * fact(n - 1)) then fact(5)"
+# Output: 120
+
 # View assembly (bytecode instructions)
 expr-solver -e "2 + 3 * 4" --assembly
 # Output:
@@ -235,6 +270,20 @@ expr-solver -e "2 + 3 * 4" --assembly
 # 0002 PUSH 4
 # 0003 MUL
 # 0004 ADD
+
+# Assembly with function labels
+expr-solver -e "let add(a, b) = a + b then add(3, 5)" --assembly
+# Output:
+# ; VERSION 1.2.0
+# 0000 JMP 0003
+#      add(a, b):
+# 0001 LOAD_PARAM a
+# 0002 LOAD_PARAM b
+# 0003 ADD
+# 0004 RET
+# 0005 PUSH 3
+# 0006 PUSH 5
+# 0007 CALL add 2
 
 # Compile to binary file
 expr-solver -e "2+3*4" -o expr.bin

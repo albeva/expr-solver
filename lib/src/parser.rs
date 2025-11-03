@@ -1,4 +1,11 @@
 //! Recursive descent parser for mathematical expressions.
+//!
+//! Supports:
+//! - Arithmetic and comparison operators
+//! - Function calls (built-in and user-defined)
+//! - User-defined functions with `let name(params) = body`
+//! - Local constants with `let name = value`
+//! - Conditional expressions with `if(condition, then, else)`
 
 use super::ast::{Decl, Expr, UnOp};
 use super::error::ParseError;
@@ -12,12 +19,29 @@ pub type ParseResult<'src> = Result<Expr<'src>, ParseError>;
 ///
 /// Uses operator precedence climbing for efficient binary operator parsing.
 ///
+/// ## Grammar
+///
+/// The parser supports the following syntax:
+/// - **Expressions**: `2 + 3 * 4`, `sqrt(16)`, `x * 2`
+/// - **Local constants**: `let x = 10 then x * 2`
+/// - **User functions**: `let add(a, b) = a + b then add(3, 5)`
+/// - **Conditionals**: `if(x > 0, x, -x)`
+///
 /// # Examples
 ///
 /// ```
 /// use expr_solver::Parser;
 ///
 /// let mut parser = Parser::new("2 + 3 * 4");
+/// let ast = parser.parse().unwrap();
+/// assert!(ast.is_some());
+/// ```
+///
+/// With functions:
+/// ```
+/// use expr_solver::Parser;
+///
+/// let mut parser = Parser::new("let add(a, b) = a + b then add(3, 5)");
 /// let ast = parser.parse().unwrap();
 /// assert!(ast.is_some());
 /// ```

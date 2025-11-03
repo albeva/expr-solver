@@ -6,31 +6,55 @@ use crate::number::Number;
 use serde::{Deserialize, Serialize};
 
 /// Bytecode instructions for the stack-based virtual machine.
+///
+/// The VM uses a stack-based architecture with support for user-defined functions
+/// through a call stack mechanism.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serialization", derive(Serialize, Deserialize))]
 pub enum Instr {
+    /// Push a constant value onto the stack
     Push(Number),
-    Load(usize),  // Index into SymTable
-    Store(usize), // Index into SymTable
+    /// Load a symbol value by index and push onto stack
+    Load(usize),
+    /// Store top of stack to a symbol by index
+    Store(usize),
+    /// Negate the top of stack
     Neg,
+    /// Pop two values, add them, push result
     Add,
+    /// Pop two values, subtract them, push result
     Sub,
+    /// Pop two values, multiply them, push result
     Mul,
+    /// Pop two values, divide them, push result
     Div,
+    /// Pop two values, compute power, push result
     Pow,
+    /// Pop value, compute factorial, push result
     Fact,
-    Call(usize, usize), // Index into SymTable and argument count
+    /// Call a function by symbol index with argument count
+    Call(usize, usize),
+    /// Compare top two values for equality
     Equal,
+    /// Compare top two values for inequality
     NotEqual,
+    /// Compare if second < top
     Less,
+    /// Compare if second <= top
     LessEqual,
+    /// Compare if second > top
     Greater,
+    /// Compare if second >= top
     GreaterEqual,
     // Control flow
-    Jmp(usize), // Unconditional jump to instruction index
-    Jz(usize),  // Jump to instruction index if top of stack is zero (consumes value)
-    // Func handling
-    LoadParam(usize), // Load function param
+    /// Unconditional jump to instruction index (used for if-expressions and function skip)
+    Jmp(usize),
+    /// Jump to instruction index if top of stack is zero (consumes value)
+    Jz(usize),
+    // Function support
+    /// Load a function parameter by index from current call frame
+    LoadParam(usize),
+    /// Return from function call, popping call frame
     Ret,
 }
 

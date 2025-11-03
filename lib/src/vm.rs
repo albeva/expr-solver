@@ -23,8 +23,19 @@ pub enum VmError {
 
 /// Stack-based virtual machine for executing bytecode programs.
 ///
-/// The VM evaluates programs by executing bytecode instructions on a stack,
-/// performing arithmetic operations and function calls.
+/// The VM evaluates programs by executing bytecode instructions on a value stack,
+/// performing arithmetic operations, function calls, and control flow.
+///
+/// ## Architecture
+///
+/// - **Value stack**: Operands and intermediate results
+/// - **Call stack**: Function call frames for user-defined functions
+/// - **Instruction pointer (IP)**: Current bytecode position
+///
+/// User-defined functions use a call stack mechanism where parameters are passed
+/// on the value stack and accessed via call frames. Each call frame stores:
+/// - Stack pointer (SP): Base position of the function's parameters
+/// - Return IP: Instruction to resume after the function returns
 ///
 /// ## Error Handling
 ///
@@ -44,9 +55,14 @@ pub struct Vm<'vm> {
     ip: usize,
 }
 
+/// Call stack frame for user-defined function calls.
+///
+/// Stores the state needed to return from a function call and access parameters.
 #[derive(Debug)]
 struct CallStack {
+    /// Stack pointer - base index of function parameters on the value stack
     sp: usize,
+    /// Instruction pointer - return address after function completes
     ip: usize,
 }
 

@@ -4,12 +4,18 @@ use crate::number::Number;
 use crate::span::Span;
 use crate::token::Token;
 
+/// Declaration in a `let` block - either a variable or function.
+///
+/// Declarations are compiled at the beginning of the program and can be
+/// referenced in the main expression after the `then` keyword.
 #[derive(Debug, Clone)]
 pub enum Decl<'src> {
+    /// Variable declaration: `let x = expr`
     Var {
         name: &'src str,
         body: Expr<'src>,
     },
+    /// Function declaration: `let f(a, b) = expr`
     Func {
         name: &'src str,
         params: Vec<&'src str>,

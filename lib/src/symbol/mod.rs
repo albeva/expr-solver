@@ -45,7 +45,7 @@ pub enum SymbolError {
     SymbolNotFound(String),
 }
 
-/// A symbol representing either a constant or function.
+/// A symbol representing a constant, built-in function, or user-defined function.
 ///
 /// Symbols are stored in a [`SymTable`] and referenced during evaluation.
 #[derive(Debug, Clone)]
@@ -58,7 +58,7 @@ pub enum Symbol {
         /// Whether this is a local constant (from let) or global (from stdlib)
         local: bool,
     },
-    /// Function with specified arity and callback.
+    /// Built-in function with native callback.
     Func {
         name: Cow<'static, str>,
         /// Minimum number of arguments
@@ -68,10 +68,15 @@ pub enum Symbol {
         callback: fn(&[Number]) -> Result<Number, FuncError>,
         description: Option<Cow<'static, str>>,
     },
-    /// Local function
+    /// User-defined function compiled to bytecode.
+    ///
+    /// These are defined with the `let` keyword and compiled to bytecode.
+    /// The VM executes them using a call stack for parameter passing and recursion support.
     LocalFunc {
         name: Cow<'static, str>,
+        /// Function parameter names
         params: Vec<Cow<'static, str>>,
+        /// Bytecode offset where the function body starts
         offset: usize,
     },
 }
