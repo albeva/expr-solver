@@ -384,12 +384,10 @@ impl<'vm> Vm<'vm> {
             Symbol::LocalFunc { params, offset, .. } => {
                 let sp = self.stack.len() - params.len();
                 let ip = self.ip;
-                self.call_stack.push(CallStack {
-                    sp, ip
-                });
+                self.call_stack.push(CallStack { sp, ip });
                 self.ip = *offset;
                 Ok(())
-            },
+            }
             _ => panic!("Invalid call symbol"),
         }
     }

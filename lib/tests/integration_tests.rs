@@ -429,8 +429,14 @@ fn test_let_func_declaration() {
     assert_eq!(eval_ok("let fn(x) = x * x then fn(2)"), num!(4));
     assert_eq!(eval_ok("let add(a, b) = a + b then add(2, 3)"), num!(5));
     assert_eq!(eval_ok("let y = 1, fn(x) = x + y then fn(2)"), num!(3));
-    assert_eq!(eval_ok("let foo(x) = x * x, bar(x) = foo(x+1) then bar(2)"), num!(9));
-    assert_eq!(eval_ok("let fact(n) = if(n > 0, n * fact(n - 1), 1) then fact(5)"), num!(120));
+    assert_eq!(
+        eval_ok("let foo(x) = x * x, bar(x) = foo(x+1) then bar(2)"),
+        num!(9)
+    );
+    assert_eq!(
+        eval_ok("let fact(n) = if(n > 0, n * fact(n - 1), 1) then fact(5)"),
+        num!(120)
+    );
 }
 
 #[test]

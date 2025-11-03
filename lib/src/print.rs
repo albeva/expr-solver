@@ -58,6 +58,8 @@ impl<'p, S> Print<'p, S> {
         end: usize,
         get_symbol_name: &F,
         is_local: &G,
+        func_labels: Option<&HashMap<usize, (String, Vec<String>)>>,
+        current_params: Option<&Vec<String>>,
     ) -> (String, Vec<String>)
     where
         F: Fn(usize) -> String,
@@ -188,8 +190,15 @@ impl<'p, S> Print<'p, S> {
                     };
 
                     // Recursively decompile then-branch
-                    let (then_expr, _) =
-                        self.decompile_region(bytecode, ip + 1, jmp_pos, get_symbol_name, is_local);
+                    let (then_expr, _) = self.decompile_region(
+                        bytecode,
+                        ip + 1,
+                        jmp_pos,
+                        get_symbol_name,
+                        is_local,
+                        func_labels,
+                        current_params,
+                    );
 
                     // Recursively decompile else-branch
                     let (else_expr, _) = self.decompile_region(
@@ -198,6 +207,8 @@ impl<'p, S> Print<'p, S> {
                         end_target,
                         get_symbol_name,
                         is_local,
+                        func_labels,
+                        current_params,
                     );
 
                     // Construct if(...) expression
@@ -214,15 +225,81 @@ impl<'p, S> Print<'p, S> {
                     // Jump past the entire if expression
                     ip = end_target;
                 }
-                Instr::Jmp(_) => {
-                    // Part of IF expression, already handled
+                Instr::Jmp(target) => {
+                    // Check if this is a function-skipping JMP
+                    // Function bodies are at ip+1, and JMP targets are after the function
+                    if let Some(func_map) = func_labels {
+                        let func_start = ip + 1;
+                        if let Some((func_name, params)) = func_map.get(&func_start) {
+                            // This JMP skips over a function body
+                            // Decompile the function
+
+                            // Find the RET instruction
+                            let mut func_end = func_start;
+                            while func_end < bytecode.len() {
+                                if matches!(bytecode[func_end], Instr::Ret) {
+                                    break;
+                                }
+                                func_end += 1;
+                            }
+
+                            // Decompile function body with function's params
+                            let (body, _) = self.decompile_region(
+                                bytecode,
+                                func_start,
+                                func_end,
+                                get_symbol_name,
+                                is_local,
+                                func_labels,
+                                Some(params),
+                            );
+
+                            // Format function declaration: name(param1, param2) = body
+                            let fname = self.style.function(func_name);
+                            let lparen = self.style.delimiter("(");
+                            let rparen = self.style.delimiter(")");
+                            let comma = self.style.delimiter(", ");
+                            let eq = self.style.operator(" = ");
+
+                            let param_names: Vec<String> = params
+                                .iter()
+                                .map(|p| self.style.local_symbol(p).to_string())
+                                .collect();
+                            let params_str = param_names.join(&comma.to_string());
+
+                            declarations.push(format!(
+                                "{}{}{}{}{}{}",
+                                fname, lparen, params_str, rparen, eq, body
+                            ));
+
+                            // Jump past the function to continue
+                            ip = *target;
+                            continue;
+                        }
+                    }
+
+                    // Otherwise, part of IF expression, already handled
                     ip += 1;
                 }
-                Instr::LoadParam(_) => {
-                    unimplemented!()
+                Instr::LoadParam(idx) => {
+                    if let Some(params) = current_params {
+                        if let Some(name) = params.get(*idx) {
+                            let param = self.style.local_symbol(name);
+                            stack.push(param.to_string());
+                        } else {
+                            // Fallback: use index
+                            stack.push(format!("param_{}", idx));
+                        }
+                    } else {
+                        // No params context, shouldn't happen
+                        stack.push(format!("param_{}", idx));
+                    }
+                    ip += 1;
                 }
                 Instr::Ret => {
-                    unimplemented!()
+                    // End of function - this should be handled by the caller
+                    // who set the end boundary
+                    ip += 1;
                 }
             }
         }
@@ -392,10 +469,33 @@ impl<'p, S> Print<'p, S> {
 // ============================================================================
 
 impl<'p> Print<'p, Compiled> {
+    /// Build function metadata map from symbol metadata.
+    fn build_func_metadata_compiled(&self) -> HashMap<usize, (String, Vec<String>)> {
+        use crate::metadata::SymbolKind;
+
+        let mut func_map = HashMap::new();
+        let symbols = self.program.symbols();
+
+        for meta in symbols {
+            if let SymbolKind::LocalFunc {
+                arity: _,
+                params,
+                offset,
+            } = &meta.kind
+            {
+                let param_names: Vec<String> = params.iter().map(|p| p.to_string()).collect();
+                func_map.insert(*offset, (meta.name.to_string(), param_names));
+            }
+        }
+
+        func_map
+    }
+
     /// Returns the pretty-printed expression as a string.
     fn get_expr(&self) -> String {
         let bytecode = self.program.bytecode();
         let symbols = self.program.symbols();
+        let func_metadata = self.build_func_metadata_compiled();
 
         let (expr, _) = self.decompile_region(
             bytecode,
@@ -403,6 +503,8 @@ impl<'p> Print<'p, Compiled> {
             bytecode.len(),
             &|idx| symbols[idx].name.to_string(),
             &|idx| symbols[idx].local,
+            Some(&func_metadata),
+            None,
         );
         expr
     }
@@ -434,9 +536,31 @@ impl<'p> fmt::Display for Print<'p, Compiled> {
 // ============================================================================
 
 impl<'p> Print<'p, Linked> {
+    /// Build function metadata map from symbol table.
+    fn build_func_metadata_linked(&self) -> HashMap<usize, (String, Vec<String>)> {
+        use crate::symbol::Symbol;
+
+        let mut func_map = HashMap::new();
+
+        for symbol in self.program.symtable().symbols() {
+            if let Symbol::LocalFunc {
+                name,
+                params,
+                offset,
+            } = symbol
+            {
+                let param_names: Vec<String> = params.iter().map(|p| p.to_string()).collect();
+                func_map.insert(*offset, (name.to_string(), param_names));
+            }
+        }
+
+        func_map
+    }
+
     /// Returns the pretty-printed expression.
     pub fn get_expr(&self) -> String {
         let bytecode = self.program.bytecode();
+        let func_metadata = self.build_func_metadata_linked();
 
         let (expr, _) = self.decompile_region(
             bytecode,
@@ -444,6 +568,8 @@ impl<'p> Print<'p, Linked> {
             bytecode.len(),
             &|idx| self.get_symbol_name(idx).to_string(),
             &|idx| self.is_local_symbol(idx),
+            Some(&func_metadata),
+            None,
         );
         expr
     }
@@ -482,12 +608,8 @@ impl<'p> Print<'p, Linked> {
         let mut params_map = HashMap::new();
 
         for symbol in self.program.symtable().symbols() {
-            if let Symbol::LocalFunc {
-                params, offset, ..
-            } = symbol
-            {
-                let param_names: Vec<String> =
-                    params.iter().map(|p| p.to_string()).collect();
+            if let Symbol::LocalFunc { params, offset, .. } = symbol {
+                let param_names: Vec<String> = params.iter().map(|p| p.to_string()).collect();
                 params_map.insert(*offset, param_names);
             }
         }
