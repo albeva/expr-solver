@@ -6,6 +6,7 @@
 use crate::ir::Instr;
 use crate::program::{Compiled, Linked, Program};
 use crate::style::ExprStyle;
+use std::collections::HashMap;
 use std::fmt::{self, Write as _};
 
 /// Pretty printer for expressions with syntax highlighting.
@@ -255,7 +256,14 @@ impl<'p, S> Print<'p, S> {
     }
 
     /// Core assembly formatting logic shared between Compiled and Linked.
-    fn format_assembly<F>(&self, bytecode: &[Instr], version: &str, get_symbol_name: &F) -> String
+    fn format_assembly<F>(
+        &self,
+        bytecode: &[Instr],
+        version: &str,
+        get_symbol_name: &F,
+        func_labels: Option<&HashMap<usize, String>>,
+        func_params: Option<&HashMap<usize, Vec<String>>>,
+    ) -> String
     where
         F: Fn(usize) -> String,
     {
@@ -265,19 +273,47 @@ impl<'p, S> Print<'p, S> {
         let comment = self.style.comment(&format!("; VERSION {}\n", version));
         out.push_str(&comment.to_string());
 
+        // Track current function parameters
+        let mut current_params: Option<&Vec<String>> = None;
+
         // Instructions
         for (i, instr) in bytecode.iter().enumerate() {
+            // Check if this address has a function label
+            if let Some(labels) = func_labels {
+                if let Some(_label) = labels.get(&i) {
+                    // Emit label line: "     add(a, b):"
+                    let styled_label = self.style.asm_label(_label);
+                    let colon = self.style.delimiter(":");
+                    let _ = writeln!(out, "     {}{}", styled_label, colon);
+
+                    // Update current function parameters
+                    if let Some(params_map) = func_params {
+                        current_params = params_map.get(&i);
+                    }
+                }
+            }
+
+            // Check if we're exiting a function (RET instruction)
+            if matches!(instr, Instr::Ret) {
+                current_params = None;
+            }
+
             let addr = self.style.asm_address(&format!("{:04X} ", i));
             let _ = write!(out, "{}", addr);
 
-            let line = self.format_instruction(instr, get_symbol_name);
+            let line = self.format_instruction(instr, get_symbol_name, current_params);
             let _ = writeln!(out, "{}", line);
         }
 
         out
     }
 
-    fn format_instruction<F>(&self, instr: &Instr, get_symbol_name: &F) -> String
+    fn format_instruction<F>(
+        &self,
+        instr: &Instr,
+        get_symbol_name: &F,
+        current_params: Option<&Vec<String>>,
+    ) -> String
     where
         F: Fn(usize) -> String,
     {
@@ -332,8 +368,16 @@ impl<'p, S> Print<'p, S> {
             }
             Instr::LoadParam(idx) => {
                 let instr = self.style.keyword("LOAD_PARAM");
-                let idx = self.style.number(&idx.to_string());
-                format!("{} {}", instr, idx)
+                let param = if let Some(params) = current_params {
+                    if let Some(name) = params.get(*idx) {
+                        self.style.local_symbol(name).to_string()
+                    } else {
+                        self.style.number(&idx.to_string()).to_string()
+                    }
+                } else {
+                    self.style.number(&idx.to_string()).to_string()
+                };
+                format!("{} {}", instr, param)
             }
             Instr::Ret => {
                 let instr = self.style.keyword("RET");
@@ -369,7 +413,13 @@ impl<'p> Print<'p, Compiled> {
         let symbols = self.program.symbols();
         let version = self.program.version();
 
-        self.format_assembly(bytecode, version, &|idx| symbols[idx].name.to_string())
+        self.format_assembly(
+            bytecode,
+            version,
+            &|idx| symbols[idx].name.to_string(),
+            None,
+            None,
+        )
     }
 }
 
@@ -398,14 +448,67 @@ impl<'p> Print<'p, Linked> {
         expr
     }
 
+    /// Build a map of instruction offsets to function labels.
+    fn build_function_labels(&self) -> HashMap<usize, String> {
+        use crate::symbol::Symbol;
+
+        let mut labels = HashMap::new();
+
+        for symbol in self.program.symtable().symbols() {
+            if let Symbol::LocalFunc {
+                name,
+                params,
+                offset,
+            } = symbol
+            {
+                // Format: "add(a, b)"
+                let param_list = params
+                    .iter()
+                    .map(|p| p.as_ref())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let label = format!("{}({})", name, param_list);
+                labels.insert(*offset, label);
+            }
+        }
+
+        labels
+    }
+
+    /// Build a map of instruction offsets to function parameter names.
+    fn build_function_params(&self) -> HashMap<usize, Vec<String>> {
+        use crate::symbol::Symbol;
+
+        let mut params_map = HashMap::new();
+
+        for symbol in self.program.symtable().symbols() {
+            if let Symbol::LocalFunc {
+                params, offset, ..
+            } = symbol
+            {
+                let param_names: Vec<String> =
+                    params.iter().map(|p| p.to_string()).collect();
+                params_map.insert(*offset, param_names);
+            }
+        }
+
+        params_map
+    }
+
     /// Returns the pretty-printed assembly as a string.
     pub fn assembly(&self) -> String {
         let bytecode = self.program.bytecode();
         let version = self.program.version();
+        let func_labels = self.build_function_labels();
+        let func_params = self.build_function_params();
 
-        self.format_assembly(bytecode, version, &|idx| {
-            self.get_symbol_name(idx).to_string()
-        })
+        self.format_assembly(
+            bytecode,
+            version,
+            &|idx| self.get_symbol_name(idx).to_string(),
+            Some(&func_labels),
+            Some(&func_params),
+        )
     }
 
     fn get_symbol_name(&self, idx: usize) -> &str {

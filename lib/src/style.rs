@@ -42,6 +42,8 @@ pub struct ExprStyle {
     pub asm_address_color: Color,
     /// Comments (assembly and future source comments)
     pub comment_color: Color,
+    /// Function labels in assembly
+    pub asm_label_color: Color,
 }
 
 impl Default for ExprStyle {
@@ -57,6 +59,7 @@ impl Default for ExprStyle {
             delimiter_color: Color::White,
             asm_address_color: Color::Yellow,
             comment_color: Color::BrightBlack,
+            asm_label_color: Color::BrightBlue,
         }
     }
 }
@@ -115,5 +118,10 @@ impl ExprStyle {
     /// Applies comment styling to a string.
     pub fn comment(&self, s: &str) -> ColoredString {
         s.color(self.comment_color)
+    }
+
+    /// Applies assembly label styling to a string.
+    pub fn asm_label(&self, s: &str) -> ColoredString {
+        s.color(self.asm_label_color)
     }
 }

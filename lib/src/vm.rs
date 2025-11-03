@@ -40,12 +40,12 @@ pub struct Vm<'vm> {
     bytecode: &'vm [Instr],
     symtable: &'vm mut SymTable,
     stack: Vec<Number>,
-    call_stack: Vec<CallSatck>,
+    call_stack: Vec<CallStack>,
     ip: usize,
 }
 
 #[derive(Debug)]
-struct CallSatck {
+struct CallStack {
     sp: usize,
     ip: usize,
 }
@@ -384,7 +384,7 @@ impl<'vm> Vm<'vm> {
             Symbol::LocalFunc { params, offset, .. } => {
                 let sp = self.stack.len() - params.len();
                 let ip = self.ip;
-                self.call_stack.push(CallSatck {
+                self.call_stack.push(CallStack {
                     sp, ip
                 });
                 self.ip = *offset;
